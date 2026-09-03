@@ -18,9 +18,28 @@ type SsiContext = Context<{ Bindings: Env; Variables: AuthedVariables }>;
 
 export const ssiRoutes = new Hono<{ Bindings: Env; Variables: AuthedVariables }>();
 
-ssiRoutes.use('*', requireAuth);
-
 const UPSTREAM_UNAVAILABLE = { error: 'Could not reach SSI right now. Try again shortly.' } as const;
+
+ssiRoutes.post('/guest-token', requireMatchingOrigin, async (c) => {
+  const body = await c.req.json<{ ssiEmail?: string; ssiPassword?: string }>();
+  const ssiEmail = body.ssiEmail?.trim();
+  const ssiPassword = body.ssiPassword;
+  if (!ssiEmail || !ssiPassword) {
+    return c.json({ error: 'SSI email and password are required.' }, 400);
+  }
+
+  try {
+    const ssiToken = await ssiAuthenticate(ssiEmail, ssiPassword);
+    return c.json({ ssiToken });
+  } catch (err) {
+    if (err instanceof SSIAuthenticationError) {
+      return c.json({ error: err.message }, 401);
+    }
+    return c.json(UPSTREAM_UNAVAILABLE, 502);
+  }
+});
+
+ssiRoutes.use('*', requireAuth);
 
 ssiRoutes.post('/link', requireMatchingOrigin, async (c) => {
   const body = await c.req.json<{ ssiEmail?: string; ssiPassword?: string }>();

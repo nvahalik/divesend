@@ -209,3 +209,68 @@ describe('GET /api/ssi/sites', () => {
     expect(await res.json()).toEqual([{ odin_dive_sites_id: 1 }]);
   });
 });
+
+describe('POST /api/ssi/guest-token', () => {
+  it('returns a token on valid SSI credentials and writes nothing', async () => {
+    vi.mocked(ssiAuthenticate).mockResolvedValue('guest-ssi-token');
+
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ssiToken: 'guest-ssi-token' });
+    expect(ssiAuthenticate).toHaveBeenCalledWith('diver@ssi.example', 'ssi-pass');
+  });
+
+  it('returns 400 when a field is missing', async () => {
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example' }),
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 with the SSI message on bad SSI credentials', async () => {
+    vi.mocked(ssiAuthenticate).mockRejectedValue(new SSIAuthenticationError('Invalid password'));
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'wrong' }),
+      })
+    );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Invalid password' });
+  });
+
+  it('returns 502 when SSI is unreachable', async () => {
+    vi.mocked(ssiAuthenticate).mockRejectedValue(new Error('network down'));
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+    expect(res.status).toBe(502);
+  });
+
+  it('returns 403 without a matching Origin', async () => {
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+    expect(res.status).toBe(403);
+  });
+});
