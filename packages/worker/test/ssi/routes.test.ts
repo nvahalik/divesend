@@ -6,6 +6,13 @@ vi.mock('../../src/ssi/client', async () => {
   return { ...actual, ssiAuthenticate: vi.fn(), ssiGetDivelog: vi.fn(), ssiGetDiveSites: vi.fn(), ssiSaveDivelog: vi.fn() };
 });
 
+vi.mock('../../src/ssi/tokenCache', async () => {
+  const actual = await vi.importActual<typeof import('../../src/ssi/tokenCache')>('../../src/ssi/tokenCache');
+  // Keep the real KV behavior; wrap only to record calls so bearer-mode tests can assert the
+  // guest path never reads the token cache.
+  return { ...actual, getCachedToken: vi.fn(actual.getCachedToken) };
+});
+
 // Workaround for a @cloudflare/vitest-pool-workers bug (cloudflare/workers-sdk#10201): when a
 // setup file imports from `cloudflare:test` (test/apply-migrations.ts does, for D1 migrations),
 // vi.mock() factories are silently ignored for modules statically imported at the top of a test
@@ -15,6 +22,7 @@ vi.resetModules();
 const { ssiAuthenticate, ssiGetDivelog, ssiGetDiveSites, ssiSaveDivelog, SSIAuthenticationError } = await import(
   '../../src/ssi/client'
 );
+const { getCachedToken } = await import('../../src/ssi/tokenCache');
 const worker = (await import('../../src/index')).default;
 
 function cookieFrom(response: Response): string {
@@ -44,7 +52,25 @@ beforeEach(() => {
   vi.mocked(ssiGetDivelog).mockReset();
   vi.mocked(ssiGetDiveSites).mockReset();
   vi.mocked(ssiSaveDivelog).mockReset();
+  vi.mocked(getCachedToken).mockClear(); // keep the real impl, just drop prior-test call records
 });
+
+/**
+ * Spies on `env.DB.prepare` for the duration of `run`, then asserts no `ssi_links` query was
+ * prepared and the KV token cache was never read -- i.e. the guest/bearer path short-circuited
+ * before any D1 or KV work. Returns whatever `run` returned.
+ */
+async function expectNoLinkLookupOrCacheRead<T>(run: () => Promise<T>): Promise<T> {
+  const prepareSpy = vi.spyOn(env.DB, 'prepare');
+  try {
+    return await run();
+  } finally {
+    const prepared = prepareSpy.mock.calls.map(([sql]) => String(sql));
+    expect(prepared.some((sql) => sql.includes('ssi_links'))).toBe(false);
+    expect(getCachedToken).not.toHaveBeenCalled();
+    prepareSpy.mockRestore();
+  }
+}
 
 describe('POST /api/ssi/link', () => {
   it('stores the link on valid SSI credentials', async () => {
@@ -279,10 +305,12 @@ describe('SSI proxy routes — guest (bearer) mode', () => {
   it('GET /api/ssi/divelog uses the bearer token directly and reads no D1/KV', async () => {
     vi.mocked(ssiGetDivelog).mockResolvedValue([{ odin_user_log_nr: 7 }]);
 
-    const res = await callWorker(
-      new Request('http://localhost/api/ssi/divelog', {
-        headers: { Authorization: 'Bearer raw-guest-token' },
-      })
+    const res = await expectNoLinkLookupOrCacheRead(() =>
+      callWorker(
+        new Request('http://localhost/api/ssi/divelog', {
+          headers: { Authorization: 'Bearer raw-guest-token' },
+        })
+      )
     );
 
     expect(res.status).toBe(200);
@@ -294,12 +322,14 @@ describe('SSI proxy routes — guest (bearer) mode', () => {
   it('POST /api/ssi/divelog proxies with the bearer token', async () => {
     vi.mocked(ssiSaveDivelog).mockResolvedValue({ success: { odin_user_log_id: 5 } });
 
-    const res = await callWorker(
-      new Request('http://localhost/api/ssi/divelog', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', Authorization: 'Bearer raw-guest-token' },
-        body: JSON.stringify({ odin_user_log_nr: 3 }),
-      })
+    const res = await expectNoLinkLookupOrCacheRead(() =>
+      callWorker(
+        new Request('http://localhost/api/ssi/divelog', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', Authorization: 'Bearer raw-guest-token' },
+          body: JSON.stringify({ odin_user_log_nr: 3 }),
+        })
+      )
     );
 
     expect(res.status).toBe(200);
@@ -308,8 +338,10 @@ describe('SSI proxy routes — guest (bearer) mode', () => {
 
   it('GET /api/ssi/sites works with a bearer token', async () => {
     vi.mocked(ssiGetDiveSites).mockResolvedValue([{ odin_dive_sites_id: 2 }]);
-    const res = await callWorker(
-      new Request('http://localhost/api/ssi/sites', { headers: { Authorization: 'Bearer raw-guest-token' } })
+    const res = await expectNoLinkLookupOrCacheRead(() =>
+      callWorker(
+        new Request('http://localhost/api/ssi/sites', { headers: { Authorization: 'Bearer raw-guest-token' } })
+      )
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([{ odin_dive_sites_id: 2 }]);
