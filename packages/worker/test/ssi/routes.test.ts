@@ -62,14 +62,22 @@ beforeEach(() => {
  */
 async function expectNoLinkLookupOrCacheRead<T>(run: () => Promise<T>): Promise<T> {
   const prepareSpy = vi.spyOn(env.DB, 'prepare');
+  let result: T;
+  let prepared: string[];
+  let cacheWasRead: boolean;
+  // Snapshot what we need and restore the spy *before* asserting: an assertion thrown from
+  // inside `finally` would leave the `env.DB.prepare` spy installed and leak it into every
+  // later test in this file.
   try {
-    return await run();
+    result = await run();
   } finally {
-    const prepared = prepareSpy.mock.calls.map(([sql]) => String(sql));
-    expect(prepared.some((sql) => sql.includes('ssi_links'))).toBe(false);
-    expect(getCachedToken).not.toHaveBeenCalled();
+    prepared = prepareSpy.mock.calls.map(([sql]) => String(sql));
+    cacheWasRead = vi.mocked(getCachedToken).mock.calls.length > 0;
     prepareSpy.mockRestore();
   }
+  expect(prepared.some((sql) => sql.includes('ssi_links'))).toBe(false);
+  expect(cacheWasRead).toBe(false);
+  return result;
 }
 
 describe('POST /api/ssi/link', () => {
