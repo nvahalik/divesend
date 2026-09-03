@@ -1,66 +1,60 @@
 // `divesend login` / `divesend logout` -- manage the persisted SSI credentials
 // in `~/.config/divesend/auth.json` (see `../auth.ts`).
 //
-//   login                     prompt for email (visible) + password (hidden),
-//                             verify against SSI, then store them
+//   login                          prompt for email (visible) + password
+//                                  (hidden), verify against SSI, then store them
 //   login --email E --password P   same, non-interactive
-//   login --status            print the stored email, or exit 1 if none
-//   logout                    remove the stored credentials
+//   login --status                 print the stored email, or exit 1 if none
+//   logout                         remove the stored credentials
 
-import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline';
 import { Writable } from 'node:stream';
 import { fail } from '../io.js';
+import { style } from '../style.js';
 import { authenticate } from '../ssi/client.js';
 import { loadAuth, saveAuth, clearAuth } from '../auth.js';
 
-type Sub = 'login' | 'logout';
+export interface LoginOptions {
+  email?: string;
+  password?: string;
+  /** Print the stored email and exit, or exit 1 if no credentials are stored. */
+  status?: boolean;
+}
 
-export async function run(sub: Sub, args: string[]): Promise<void> {
-  if (sub === 'logout') {
-    clearAuth();
-    process.stderr.write('logged out\n');
+export async function login(options: LoginOptions = {}): Promise<void> {
+  if (options.status) {
+    const current = loadAuth();
+    if (!current) {
+      fail('Not logged in.');
+    }
+    process.stderr.write(`Logged in as ${current.email}.\n`);
     return;
   }
 
-  const { values } = parseArgs({
-    args,
-    options: {
-      email: { type: 'string' },
-      password: { type: 'string' },
-      status: { type: 'boolean' },
-    },
-  });
-
-  if (values.status) {
-    const current = loadAuth();
-    if (current) {
-      process.stderr.write('logged in as ' + current.email + '\n');
-      return;
-    }
-    process.stderr.write('not logged in\n');
-    process.exit(1);
-  }
-
-  let email = values.email;
-  let password = values.password;
+  let email = options.email;
+  let password = options.password;
 
   if ((!email || !password) && !process.stdin.isTTY) {
-    fail('login: not a terminal — pass --email and --password');
+    fail('Not a terminal. Pass --email and --password to log in non-interactively.');
   }
   if (!email) email = await promptVisible('SSI email: ');
   if (!password) password = await promptHidden('SSI password: ');
   if (!email || !password) {
-    fail('login: not a terminal — pass --email and --password');
+    fail('Not a terminal. Pass --email and --password to log in non-interactively.');
   }
 
   // Verify before persisting. A bad login throws `Authentication failed: ...`,
-  // which propagates to cli.ts's top-level handler (`error: <message>`, exit 1);
+  // which propagates to cli.ts's top-level handler ("Error: <message>", exit 1);
   // nothing is written in that case.
   await authenticate(email, password);
 
   saveAuth({ email, password });
-  process.stderr.write('logged in as ' + email + '\n');
+  process.stderr.write(style.dim(`Logged in as ${email}.`) + '\n');
+}
+
+export function logout(): void {
+  clearAuth();
+  process.stderr.write(style.dim('Logged out.') + '\n');
 }
 
 /** Read one line with a visible prompt and local echo. */

@@ -1,7 +1,7 @@
 {
   "name": "divesend",
   "version": "0.1.0",
-  "description": "Offline Garmin FIT / Shearwater dive-file -> SSI converters, plus a direct SSI logbook client.",
+  "description": "Offline dive-file converter (Garmin FIT, Shearwater Cloud XML, libdivecomputer dctool XML -> SSI save_divelog JSON or UDDF) plus a direct SSI logbook client.",
   "keywords": [
     "ssi",
     "divessi",
@@ -42,7 +42,9 @@
   "dependencies": {
     "@divesend/core": "^0.1.0",
     "@garmin/fitsdk": "^21.171.0",
-    "fast-xml-parser": "^5.11.1"
+    "cac": "^7.0.0",
+    "fast-xml-parser": "^5.11.1",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

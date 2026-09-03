@@ -4,8 +4,9 @@
 // `odin_user_log_datetime` / `_date` / `_entry_time` with *local* `Date`
 // getters and derives `_dive_ref` via `toISOString()` (UTC). That is correct
 // for `app/` (its `startTime` is built from timezone-less device fields) but
-// not for `dctool2ssi`, whose `startTime` carries the dive computer's own UTC
-// offset — the CLI must emit the same bytes on any host timezone.
+// not for `convert`'s dc-xml -> ssi path, whose `startTime` carries the dive
+// computer's own UTC offset — the CLI must emit the same bytes on any host
+// timezone.
 //
 // This helper reproduces what `shearwater_transformers.to_ssi_payload`
 // produces for the real fixture, computed purely from the wall-clock

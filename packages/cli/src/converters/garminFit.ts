@@ -33,6 +33,9 @@ import {
   serializeWithForcedDoubles,
   SAMPLE_DOUBLE_FIELDS,
   type SsiSample,
+  type CanonicalDive,
+  type DiveHeader,
+  type DiveSample,
 } from '@divesend/core';
 
 /**
@@ -568,6 +571,77 @@ export function convertToSsiPayload(parsed: ParsedFit): Record<string, unknown> 
     );
   }
   return convertScuba(parsed);
+}
+
+/**
+ * Thin projection of a parsed FIT dive onto `@divesend/core`'s `CanonicalDive`
+ * -- the shape `toUddf` consumes. Used only by `divesend convert --to uddf`: it
+ * carries the depth / time / temperature / tank-pressure profile plus the gas,
+ * gradient-factor, device and start-time header fields UDDF needs, and leaves
+ * the richer SSI-only data (GPS, heart rate, alarms, CNS) behind. The SSI path
+ * (`convertToSsiPayload`) does NOT route through here.
+ */
+export function toCanonicalDive(parsed: ParsedFit): CanonicalDive {
+  const session = parsed.session ?? {};
+  const diveGas = parsed.diveGas ?? {};
+  const diveSettings = parsed.diveSettings ?? {};
+  const tankSummary = parsed.tankSummary ?? {};
+  const tankUpdates = parsed.tankUpdates ?? [];
+  const records = parsed.records ?? [];
+  const isApnea = parsed.subSport === 'apneaDiving';
+
+  const sessionStartMs = (session.startTime as Date).getTime();
+  const dsr = downsample(records, sessionStartMs);
+  const ssiSamples = isApnea
+    ? buildApneaSamples(dsr, sessionStartMs)
+    : buildScubaSamples(dsr, sessionStartMs, tankUpdates);
+
+  const samples: DiveSample[] = ssiSamples.map((s) => ({
+    timeS: s.t / 1000,
+    depthM: s.d,
+    tempC: s.te,
+    ndlS: null,
+    tankPressureBar: s.pressure ?? null,
+    decoStopDepthM: null,
+    ttsS: null,
+  }));
+
+  const depths = records.filter((r) => r.depth != null).map((r) => r.depth as number);
+  const maxDepthM = depths.length ? roundHalfToEven(Math.max(...depths), 2) : 0;
+
+  let beginBar: number | null | undefined = tankSummary.startPressure;
+  let endBar: number | null | undefined = tankSummary.endPressure;
+  if (beginBar == null && tankUpdates.length) beginBar = tankUpdates[0].pressure;
+  if (endBar == null && tankUpdates.length) endBar = tankUpdates[tankUpdates.length - 1].pressure;
+
+  const o2 = diveGas.oxygenContent;
+  const he = diveGas.heliumContent;
+
+  const header: DiveHeader = {
+    startTime: (session.startTime as Date).toISOString(),
+    maxDepthM,
+    gasO2Percent: o2 != null ? o2 : 21,
+    gasHePercent: he != null ? he : 0,
+    tankBeginPressureBar: beginBar != null ? roundHalfToEven(beginBar, 2) : null,
+    tankEndPressureBar: endBar != null ? roundHalfToEven(endBar, 2) : null,
+    diveMode: isApnea ? 'freedive' : 'oc',
+    decoModel: 'buhlmann',
+    gfLow: diveSettings.gfLow != null ? diveSettings.gfLow : 0,
+    gfHigh: diveSettings.gfHigh != null ? diveSettings.gfHigh : 0,
+    salinity: diveSettings.waterType === 'salt' ? 'salt' : 'fresh',
+    deviceModel: parsed.device.productName,
+    divetimeS:
+      session.totalElapsedTime != null
+        ? Math.round(session.totalElapsedTime)
+        : samples.length
+          ? samples[samples.length - 1].timeS
+          : 0,
+    minTemperatureC: null,
+    maxTemperatureC: null,
+    cnsPercent: null,
+  };
+
+  return { header, samples };
 }
 
 // --- FIT decode ------------------------------------------------------------
