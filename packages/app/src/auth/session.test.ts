@@ -9,6 +9,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('enableGuestMode', () => {
+  it('returns true and persists the flag when storage is writable', () => {
+    expect(enableGuestMode()).toBe(true);
+    expect(localStorage.getItem(GUEST_MODE_STORAGE_KEY)).toBe('1');
+  });
+
+  it('returns false when localStorage.setItem throws', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+    expect(enableGuestMode()).toBe(false);
+  });
+});
+
 describe('resolveSession', () => {
   it('returns an AccountUser when me() resolves a user, ignoring the guest flag', async () => {
     vi.spyOn(authClient, 'me').mockResolvedValue({ email: 'a@b.com', ssiLinked: true, ssiEmail: 'd@ssi.example' });

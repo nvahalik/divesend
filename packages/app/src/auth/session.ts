@@ -27,8 +27,10 @@ export function isGuestMode(): boolean {
   return readLocalStorage(GUEST_MODE_STORAGE_KEY) === '1';
 }
 
-export function enableGuestMode(): void {
-  writeLocalStorage(GUEST_MODE_STORAGE_KEY, '1');
+/** Returns false if the guest flag could not be persisted (storage disabled/full) -- the
+ *  caller must surface that rather than leaving the visitor on a dead-end button. */
+export function enableGuestMode(): boolean {
+  return writeLocalStorage(GUEST_MODE_STORAGE_KEY, '1');
 }
 
 export function disableGuestMode(): void {

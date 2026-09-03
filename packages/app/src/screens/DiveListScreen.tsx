@@ -8,6 +8,7 @@ import { syncDive, syncAllDives } from '../ssi/diveSyncEngine';
 import type { ExtraDiveDetails } from '../ssi/extraDiveDetails';
 import { ExtraDiveDetailsModal } from '../components/ExtraDiveDetailsModal';
 import { clearGuestSsiSession, getGuestSsiSession } from '../ssi/guestSsiSession';
+import { SSIHttpError } from '../ssi/ssiClient';
 
 interface Props {
   refreshKey: number;
@@ -26,7 +27,9 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
 
   const describeSyncError = (err: unknown): string => {
-    if (getGuestSsiSession()) {
+    // Only an auth/upstream failure means the guest token is actually dead. A transient
+    // network blip must not force the guest through a full SSI re-auth.
+    if (getGuestSsiSession() && err instanceof SSIHttpError && (err.status === 401 || err.status === 502)) {
       clearGuestSsiSession();
       return 'Your SSI session expired — reconnect on the Account screen.';
     }

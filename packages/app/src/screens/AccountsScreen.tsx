@@ -1,7 +1,7 @@
 // app/src/screens/AccountsScreen.tsx
 import { useEffect, useState } from 'react';
 import { logout } from '../auth/authClient';
-import { resolveSession, disableGuestMode, type CurrentUser } from '../auth/session';
+import { disableGuestMode, type CurrentUser } from '../auth/session';
 import {
   getGuestSsiSession,
   setGuestSsiSession,
@@ -9,12 +9,19 @@ import {
   rememberGuestSsiPassword,
   takeGuestSsiPassword,
 } from '../ssi/guestSsiSession';
-import { linkSSI, unlinkSSI, getDivelog, fetchGuestSsiToken } from '../ssi/ssiClient';
+import { linkSSI, unlinkSSI, getDivelog, fetchGuestSsiToken, SSIHttpError } from '../ssi/ssiClient';
 import { AuthForm } from '../components/AuthForm';
 import { LoginForm } from '../components/LoginForm';
 
-export function AccountsScreen() {
-  const [user, setUser] = useState<CurrentUser | null | undefined>(undefined);
+interface Props {
+  /** App.tsx's `if (!user)` gate guarantees a resolved, non-null session before this renders. */
+  user: CurrentUser;
+  /** Re-runs `resolveSession()` in App.tsx. Used instead of a full page reload so the
+   *  in-memory guest SSI password survives from "connect SSI" until signup. */
+  onSessionChange: () => Promise<void>;
+}
+
+export function AccountsScreen({ user, onSessionChange }: Props) {
   const [diveCount, setDiveCount] = useState<number | null>(null);
   const [countError, setCountError] = useState<string | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
@@ -22,17 +29,11 @@ export function AccountsScreen() {
   const [carryOver, setCarryOver] = useState<{ ssiEmail: string; password: string } | null>(null);
   const [carryOverError, setCarryOverError] = useState<string | null>(null);
 
-  const refreshUser = () => resolveSession().then(setUser);
-
-  useEffect(() => {
-    refreshUser();
-  }, []);
-
   // Fetches fresh (never persists the count itself) whenever the user's SSI-linked
   // status changes -- including on initial mount if already linked from a previous
   // session, so a reload without unlinking still shows a correct, live dive count.
   useEffect(() => {
-    if (!user?.ssiLinked) {
+    if (!user.ssiLinked) {
       setDiveCount(null);
       setCountError(null);
       return;
@@ -45,13 +46,14 @@ export function AccountsScreen() {
         if (!cancelled) setDiveCount(records.length);
       })
       .catch((err) => {
-        if (!cancelled) {
-          if (getGuestSsiSession()) {
-            clearGuestSsiSession();
-            setCountError('SSI session expired — reconnect below.');
-          } else {
-            setCountError(err instanceof Error ? err.message : String(err));
-          }
+        if (cancelled) return;
+        // Only an auth/upstream failure means the guest token is actually dead. A transient
+        // network blip must not force the guest through a full SSI re-auth.
+        if (getGuestSsiSession() && err instanceof SSIHttpError && (err.status === 401 || err.status === 502)) {
+          clearGuestSsiSession();
+          setCountError('SSI session expired — reconnect below.');
+        } else {
+          setCountError(err instanceof Error ? err.message : String(err));
         }
       })
       .finally(() => {
@@ -60,18 +62,18 @@ export function AccountsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user?.ssiLinked]);
+  }, [user.ssiLinked]);
 
   const handleLinkSSI = async (ssiEmail: string, ssiPassword: string) => {
     await linkSSI(ssiEmail, ssiPassword);
-    window.location.reload();
+    await onSessionChange();
   };
 
   const handleUnlinkSSI = async () => {
     setUnlinkError(null);
     try {
       await unlinkSSI();
-      window.location.reload();
+      await onSessionChange();
     } catch (err) {
       setUnlinkError(err instanceof Error ? err.message : String(err));
     }
@@ -79,19 +81,22 @@ export function AccountsScreen() {
 
   const handleLogout = async () => {
     await logout();
-    window.location.reload();
+    await onSessionChange();
   };
 
-  const handleAuthenticated = () => {
+  const handleAuthenticated = async () => {
     // A guest just signed up / logged in. If they connected SSI earlier in this same page
     // session, offer to move that link onto their new account in one click.
     const password = takeGuestSsiPassword();
     const guestSsi = getGuestSsiSession();
     disableGuestMode();
     if (password && guestSsi) {
+      // Deliberately no re-resolve here: App.tsx still sees `kind: 'guest'`, so the guest
+      // branch below stays mounted and renders the carry-over prompt. The session is
+      // re-resolved once the prompt is answered either way.
       setCarryOver({ ssiEmail: guestSsi.ssiEmail, password });
     } else {
-      window.location.reload();
+      await onSessionChange();
     }
   };
 
@@ -99,12 +104,14 @@ export function AccountsScreen() {
     const token = await fetchGuestSsiToken(ssiEmail, ssiPassword);
     setGuestSsiSession({ token, ssiEmail });
     rememberGuestSsiPassword(ssiPassword);
-    window.location.reload();
+    // Must NOT reload: the remembered password is a non-persisted module variable and has
+    // to survive until the guest signs up, for the post-signup carry-over offer.
+    await onSessionChange();
   };
 
-  const handleGuestDisconnectSSI = () => {
+  const handleGuestDisconnectSSI = async () => {
     clearGuestSsiSession();
-    window.location.reload();
+    await onSessionChange();
   };
 
   const handleCompleteCarryOver = async () => {
@@ -113,29 +120,11 @@ export function AccountsScreen() {
     try {
       await linkSSI(carryOver.ssiEmail, carryOver.password);
       clearGuestSsiSession();
-      window.location.reload();
+      await onSessionChange();
     } catch (err) {
       setCarryOverError(err instanceof Error ? err.message : String(err));
     }
   };
-
-  // Loading state before the initial `me()` call resolves.
-  if (user === undefined) {
-    return <p className="text-center text-slate-500">Loading…</p>;
-  }
-
-  // Not logged into the app at all. In normal navigation App.tsx's own top-level
-  // gate already handles this case before AccountsScreen ever renders, but this
-  // stays as a defensive fallback (e.g. session expiring between App.tsx's check
-  // and this component's own `me()` call).
-  if (!user) {
-    return (
-      <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold">Account</h1>
-        <AuthForm onAuthenticated={handleAuthenticated} />
-      </div>
-    );
-  }
 
   if (user.kind === 'guest') {
     if (carryOver) {
@@ -157,7 +146,7 @@ export function AccountsScreen() {
                 Connect SSI
               </button>
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => void onSessionChange()}
                 className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
               >
                 Not now
@@ -190,7 +179,7 @@ export function AccountsScreen() {
 
         {user.ssiLinked ? (
           <button
-            onClick={handleGuestDisconnectSSI}
+            onClick={() => void handleGuestDisconnectSSI()}
             className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
           >
             Disconnect SSI

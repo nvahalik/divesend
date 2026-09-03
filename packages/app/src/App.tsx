@@ -19,6 +19,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'list' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [user, setUser] = useState<CurrentUser | null | undefined>(undefined);
+  const [guestModeError, setGuestModeError] = useState<string | null>(null);
 
   const refreshUser = () => resolveSession().then(setUser);
 
@@ -38,13 +39,17 @@ export function App() {
         <button
           type="button"
           onClick={() => {
-            enableGuestMode();
+            if (!enableGuestMode()) {
+              setGuestModeError('Guest mode needs browser storage. Enable it (or leave private browsing) and try again.');
+              return;
+            }
             void refreshUser();
           }}
           className="text-sm text-slate-600 underline"
         >
           Continue without an account
         </button>
+        {guestModeError && <p className="text-sm text-red-600">{guestModeError}</p>}
       </div>
     );
   }
@@ -95,7 +100,7 @@ export function App() {
           />
         )}
         {screen.name === 'detail' && <DiveDetailScreen diveId={screen.diveId} onBack={() => setScreen({ name: 'list' })} />}
-        {screen.name === 'account' && <AccountsScreen />}
+        {screen.name === 'account' && <AccountsScreen user={user} onSessionChange={refreshUser} />}
       </main>
     </div>
   );
