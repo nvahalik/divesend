@@ -7,6 +7,7 @@ import { METERS_TO_FEET, formatDuration } from '@divesend/core';
 import { syncDive, syncAllDives } from '../ssi/diveSyncEngine';
 import type { ExtraDiveDetails } from '../ssi/extraDiveDetails';
 import { ExtraDiveDetailsModal } from '../components/ExtraDiveDetailsModal';
+import { clearGuestSsiSession, getGuestSsiSession } from '../ssi/guestSsiSession';
 
 interface Props {
   refreshKey: number;
@@ -23,6 +24,14 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   const [pendingSync, setPendingSync] = useState<PendingSync | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
+
+  const describeSyncError = (err: unknown): string => {
+    if (getGuestSsiSession()) {
+      clearGuestSsiSession();
+      return 'Your SSI session expired — reconnect on the Account screen.';
+    }
+    return err instanceof Error ? err.message : String(err);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +89,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         await syncDive(target.dive, extraDetails);
         setStatusMessage('Dive synced successfully.');
       } catch (err) {
-        setStatusMessage(`Failed to sync dive: ${err instanceof Error ? err.message : String(err)}`);
+        setStatusMessage(`Failed to sync: ${describeSyncError(err)}`);
       }
     } else {
       try {
@@ -92,7 +101,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
           setStatusMessage(`Synced ${successCount} of ${target.dives.length} dives -- ${failures.length} failed.`);
         }
       } catch (err) {
-        setStatusMessage(`Failed to sync dives: ${err instanceof Error ? err.message : String(err)}`);
+        setStatusMessage(`Failed to sync: ${describeSyncError(err)}`);
       }
     }
 

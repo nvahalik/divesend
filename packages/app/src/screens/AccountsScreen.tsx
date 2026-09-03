@@ -45,7 +45,14 @@ export function AccountsScreen() {
         if (!cancelled) setDiveCount(records.length);
       })
       .catch((err) => {
-        if (!cancelled) setCountError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) {
+          if (getGuestSsiSession()) {
+            clearGuestSsiSession();
+            setCountError('SSI session expired — reconnect below.');
+          } else {
+            setCountError(err instanceof Error ? err.message : String(err));
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingCount(false);
