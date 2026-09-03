@@ -7,7 +7,6 @@
 // file written by `divesend login` (`~/.config/divesend/auth.json`, see
 // `../auth.ts`). No token is persisted -- every invocation authenticates fresh.
 
-import { parseArgs } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import { buildCreatePayload, buildWritePayload } from '@divesend/core';
 import { fail, writeOutput } from '../io.js';
@@ -21,65 +20,64 @@ import {
   type DiveRecord,
 } from '../ssi/client.js';
 
-type Sub = 'list' | 'get' | 'push' | 'create' | 'update';
-
-interface Values {
+export interface LogbookOptions {
   email?: string;
   password?: string;
   json?: boolean;
   field?: string;
   output?: string;
   set?: string[];
-  'from-file'?: string;
-  'account-dive-id'?: string;
-  'show-response'?: boolean;
+  fromFile?: string;
+  accountDiveId?: string;
+  showResponse?: boolean;
 }
 
-export async function run(sub: Sub, args: string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args,
-    allowPositionals: true,
-    options: {
-      email: { type: 'string' },
-      password: { type: 'string' },
-      json: { type: 'boolean' },
-      field: { type: 'string' },
-      output: { type: 'string', short: 'o' },
-      set: { type: 'string', multiple: true },
-      'from-file': { type: 'string' },
-      'account-dive-id': { type: 'string' },
-      'show-response': { type: 'boolean' },
-    },
-  });
-  const v = values as Values;
-
-  // Resolve per field, first non-empty wins: flags, then env, then the file
-  // written by `divesend login`. Both must end up non-empty.
+/**
+ * Resolve SSI credentials (flags, then SSI_EMAIL / SSI_PASSWORD, then the file
+ * written by `divesend login`; first non-empty wins) and exchange them for a
+ * session token. Throws if either half is missing or the login is rejected.
+ */
+async function resolveAuth(options: LogbookOptions): Promise<string> {
   const stored = loadAuth();
-  const email = v.email ?? process.env.SSI_EMAIL ?? stored?.email;
-  const password = v.password ?? process.env.SSI_PASSWORD ?? stored?.password;
+  const email = options.email ?? process.env.SSI_EMAIL ?? stored?.email;
+  const password = options.password ?? process.env.SSI_PASSWORD ?? stored?.password;
   if (!email || !password) {
     fail(
-      'not logged in -- run `divesend login`, or set SSI_EMAIL/SSI_PASSWORD, or pass --email/--password',
+      'Not logged in. Run `divesend login`, set SSI_EMAIL and SSI_PASSWORD, or pass --email and --password.',
     );
   }
+  return authenticate(email, password);
+}
 
-  const token = await authenticate(email, password);
+/** `divesend list` -- print every dive in the logbook. */
+export async function list(options: LogbookOptions = {}): Promise<void> {
+  await cmdList(await resolveAuth(options), options);
+}
 
-  switch (sub) {
-    case 'list':
-      return cmdList(token, v);
-    case 'get':
-      return cmdGet(token, v, positionals);
-    case 'push':
-      return cmdPush(token, v, positionals);
-    case 'create':
-      return cmdCreate(token, v);
-    case 'update':
-      return cmdUpdate(token, v, positionals);
-    default:
-      fail(`unknown logbook subcommand: ${sub as string}`);
-  }
+/** `divesend get <id>` -- dump one dive as JSON, or a single field with --field. */
+export async function get(id: string | undefined, options: LogbookOptions = {}): Promise<void> {
+  await cmdGet(await resolveAuth(options), options, id);
+}
+
+/** `divesend push <file.json>` -- send an edited save_divelog payload. */
+export async function push(
+  file: string | undefined,
+  options: LogbookOptions = {},
+): Promise<void> {
+  await cmdPush(await resolveAuth(options), options, file);
+}
+
+/** `divesend create` -- create a dive from --set / --from-file overrides. */
+export async function create(options: LogbookOptions = {}): Promise<void> {
+  await cmdCreate(await resolveAuth(options), options);
+}
+
+/** `divesend update <id>` -- merge --set / --from-file overrides into a dive. */
+export async function update(
+  id: string | undefined,
+  options: LogbookOptions = {},
+): Promise<void> {
+  await cmdUpdate(await resolveAuth(options), options, id);
 }
 
 // --- Python format-spec helpers -------------------------------------------------
@@ -102,7 +100,7 @@ function pad(value: unknown, align: '<' | '>', width: number): string {
 
 // --- commands -----------------------------------------------------------------
 
-async function cmdList(token: string, v: Values): Promise<void> {
+async function cmdList(token: string, v: LogbookOptions): Promise<void> {
   const divelog = await getDivelog(token);
   const dives = [...divelog.logbook_details].sort(
     (a, b) => (a.odin_user_log_nr as number) - (b.odin_user_log_nr as number),
@@ -151,23 +149,22 @@ async function cmdList(token: string, v: Values): Promise<void> {
   process.stdout.write(lines.join('\n') + '\n');
 }
 
-function requireDiveId(positionals: string[], cmd: string): number {
-  const raw = positionals[0];
+function requireDiveId(raw: string | undefined, cmd: string): number {
   const id = Number(raw);
   if (!raw || Number.isNaN(id)) {
-    fail(`${cmd}: missing or non-numeric <id>`);
+    fail(`\`divesend ${cmd}\` needs a numeric dive <id>.`);
   }
   return id;
 }
 
-async function cmdGet(token: string, v: Values, positionals: string[]): Promise<void> {
-  const diveId = requireDiveId(positionals, 'get');
+async function cmdGet(token: string, v: LogbookOptions, id?: string): Promise<void> {
+  const diveId = requireDiveId(id, 'get');
   const divelog = await getDivelog(token);
   const dive = findDive(divelog, diveId) as Record<string, unknown>;
 
   if (v.field !== undefined) {
     if (!Object.hasOwn(dive, v.field)) {
-      fail(`dive ${diveId} has no field ${v.field}`);
+      fail(`Dive ${diveId} has no field "${v.field}".`);
     }
     const val = dive[v.field];
     const text =
@@ -188,18 +185,17 @@ function printResult(result: Record<string, unknown>, showResponse?: boolean): v
   }
 }
 
-async function cmdPush(token: string, v: Values, positionals: string[]): Promise<void> {
-  const file = positionals[0];
+async function cmdPush(token: string, v: LogbookOptions, file?: string): Promise<void> {
   if (!file) {
-    fail('push: missing <file.json>');
+    fail('`divesend push` needs a <file.json> holding a save_divelog payload.');
   }
   const edited = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
   if (!edited.odin_user_log_id) {
-    fail(`${file} has no odin_user_log_id -- can't tell which dive to update`);
+    fail(`${file} has no odin_user_log_id, so there is no way to tell which dive to update.`);
   }
   const payload = buildWritePayload(edited, {});
   const result = await saveDive(token, payload);
-  printResult(result, v['show-response']);
+  printResult(result, v.showResponse);
 }
 
 /**
@@ -208,18 +204,18 @@ async function cmdPush(token: string, v: Values, positionals: string[]): Promise
  * / boolean overrides don't get sent as strings; a parse failure keeps the raw
  * string (matching `json.loads(...)` with an `except JSONDecodeError: pass`).
  */
-async function collectOverrides(v: Values): Promise<Record<string, unknown>> {
+async function collectOverrides(v: LogbookOptions): Promise<Record<string, unknown>> {
   const overrides: Record<string, unknown> = {};
-  if (v['from-file']) {
+  if (v.fromFile) {
     Object.assign(
       overrides,
-      JSON.parse(await readFile(v['from-file'], 'utf8')) as Record<string, unknown>,
+      JSON.parse(await readFile(v.fromFile, 'utf8')) as Record<string, unknown>,
     );
   }
   for (const kv of v.set ?? []) {
     const eq = kv.indexOf('=');
     if (eq === -1) {
-      fail(`--set expects name=value, got: ${JSON.stringify(kv)}`);
+      fail(`--set expects name=value, but got ${JSON.stringify(kv)}.`);
     }
     const key = kv.slice(0, eq);
     const raw = kv.slice(eq + 1);
@@ -240,39 +236,39 @@ function mostRecent(dives: DiveRecord[]): DiveRecord {
   );
 }
 
-async function cmdCreate(token: string, v: Values): Promise<void> {
+async function cmdCreate(token: string, v: LogbookOptions): Promise<void> {
   const divelog: Divelog = await getDivelog(token);
   const dives = divelog.logbook_details;
   if (dives.length === 0) {
-    fail('account has no dives to derive the account record / next number from');
+    fail('This account has no dives, so there is no record to derive the account and next number from.');
   }
 
-  const accountRecord = v['account-dive-id']
-    ? findDive(divelog, Number(v['account-dive-id']))
+  const accountRecord = v.accountDiveId
+    ? findDive(divelog, Number(v.accountDiveId))
     : mostRecent(dives);
   const nextNr = Math.max(...dives.map((d) => d.odin_user_log_nr as number)) + 1;
 
   const overrides = await collectOverrides(v);
   if (Object.keys(overrides).length === 0) {
-    fail('nothing to create from -- pass --set name=value and/or --from-file dive.json');
+    fail('Nothing to create. Pass --set name=value and/or --from-file dive.json.');
   }
 
   const payload = buildCreatePayload(accountRecord, overrides, nextNr);
   const result = await saveDive(token, payload);
-  printResult(result, v['show-response']);
+  printResult(result, v.showResponse);
 }
 
-async function cmdUpdate(token: string, v: Values, positionals: string[]): Promise<void> {
-  const diveId = requireDiveId(positionals, 'update');
+async function cmdUpdate(token: string, v: LogbookOptions, id?: string): Promise<void> {
+  const diveId = requireDiveId(id, 'update');
   const divelog = await getDivelog(token);
   const dive = findDive(divelog, diveId) as Record<string, unknown>;
 
   const overrides = await collectOverrides(v);
   if (Object.keys(overrides).length === 0) {
-    fail('nothing to update -- pass --set name=value and/or --from-file changes.json');
+    fail('Nothing to update. Pass --set name=value and/or --from-file changes.json.');
   }
 
   const payload = buildWritePayload(dive, overrides);
   const result = await saveDive(token, payload);
-  printResult(result, v['show-response']);
+  printResult(result, v.showResponse);
 }

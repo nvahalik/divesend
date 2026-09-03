@@ -10,7 +10,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WRITE_SCHEMA_KEYS } from '@divesend/core';
-import { run } from '../../src/commands/logbook.js';
+import { list, get, push, create, update } from '../../src/commands/logbook.js';
+import { CliError } from '../../src/io.js';
 import { saveAuth } from '../../src/auth.js';
 
 const FIXTURE = fileURLToPath(new URL('../fixtures/ssi_get_divelog.json', import.meta.url));
@@ -40,7 +41,6 @@ function router(input: unknown, init?: RequestInit) {
 }
 
 const stdoutText = () => stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
-const stderrText = () => stderrSpy.mock.calls.map((c) => String(c[0])).join('');
 const sentPayload = () => JSON.parse(lastSave!.body.get('json_data')!) as Record<string, unknown>;
 
 beforeEach(() => {
@@ -67,7 +67,7 @@ afterEach(() => {
 
 describe('list', () => {
   it('prints a header + separator + one row per dive, sorted by nr', async () => {
-    await run('list', []);
+    await list();
     const lines = stdoutText().trimEnd().split('\n');
 
     expect(lines[0]).toBe(
@@ -84,7 +84,7 @@ describe('list', () => {
   });
 
   it('--json prints the raw dive array, sorted', async () => {
-    await run('list', ['--json']);
+    await list({ json: true });
     const dives = JSON.parse(stdoutText());
     expect(dives).toHaveLength(3);
     expect(dives.map((d: { odin_user_log_nr: number }) => d.odin_user_log_nr)).toEqual([1, 2, 3]);
@@ -93,36 +93,29 @@ describe('list', () => {
 
 describe('get', () => {
   it('--field K prints just that value', async () => {
-    await run('get', ['1001', '--field', 'odin_user_log_comment']);
+    await get('1001', { field: 'odin_user_log_comment' });
     expect(stdoutText().trim()).toBe('Clear and calm');
   });
 
   it('without --field prints the full dive JSON', async () => {
-    await run('get', ['1001']);
+    await get('1001');
     const dive = JSON.parse(stdoutText());
     expect(dive.odin_user_log_id).toBe(1001);
     expect(dive.odin_user_log_nr).toBe(1);
   });
 
   it('unknown dive id fails cleanly', async () => {
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    await expect(run('get', ['424242'])).rejects.toThrow();
-    exit.mockRestore();
-    errSpy.mockRestore();
+    await expect(get('424242')).rejects.toThrow();
+  });
+
+  it('missing dive id fails with a clear message', async () => {
+    await expect(get(undefined)).rejects.toThrow('needs a numeric dive <id>');
   });
 });
 
 describe('create', () => {
   it('builds a full 342-key create payload with overrides applied and a null id', async () => {
-    await run('create', [
-      '--set',
-      'odin_user_log_comment=Hello world',
-      '--set',
-      'odin_user_log_rating=5',
-    ]);
+    await create({ set: ['odin_user_log_comment=Hello world', 'odin_user_log_rating=5'] });
 
     const sent = sentPayload();
     expect(Object.keys(sent)).toHaveLength(342);
@@ -140,7 +133,7 @@ describe('create', () => {
   });
 
   it('--account-dive-id borrows only the account owner id from that dive', async () => {
-    await run('create', ['--account-dive-id', '1001', '--set', 'odin_user_log_comment=Hi']);
+    await create({ accountDiveId: '1001', set: ['odin_user_log_comment=Hi'] });
     const sent = sentPayload();
     expect(sent.odin_user_log_user_master_id).toBe(5012047);
     expect(sent.odin_user_log_dive_sites_id).toBeNull(); // still not borrowed
@@ -149,27 +142,20 @@ describe('create', () => {
   it('--from-file is merged, then --set wins on top', async () => {
     const f = join(tmp, 'over.json');
     writeFileSync(f, JSON.stringify({ odin_user_log_comment: 'from file', odin_user_log_vis_m: 12 }));
-    await run('create', ['--from-file', f, '--set', 'odin_user_log_comment=from set']);
+    await create({ fromFile: f, set: ['odin_user_log_comment=from set'] });
     const sent = sentPayload();
     expect(sent.odin_user_log_comment).toBe('from set');
     expect(sent.odin_user_log_vis_m).toBe(12);
   });
 
   it('fails when there is nothing to create from', async () => {
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    await expect(run('create', [])).rejects.toThrow();
-    expect(errSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('nothing to create');
-    exit.mockRestore();
-    errSpy.mockRestore();
+    await expect(create()).rejects.toThrow('Nothing to create');
   });
 });
 
 describe('update', () => {
   it('merges overrides onto the fetched record without clobbering unset fields', async () => {
-    await run('update', ['1001', '--set', 'odin_user_log_comment=Saw a manta']);
+    await update('1001', { set: ['odin_user_log_comment=Saw a manta'] });
 
     const sent = sentPayload();
     expect(Object.keys(sent)).toHaveLength(342);
@@ -183,19 +169,12 @@ describe('update', () => {
   });
 
   it('coerces numeric --set values via JSON', async () => {
-    await run('update', ['1001', '--set', 'odin_user_log_rating=3']);
+    await update('1001', { set: ['odin_user_log_rating=3'] });
     expect(sentPayload().odin_user_log_rating).toBe(3);
   });
 
   it('fails when nothing is set', async () => {
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    await expect(run('update', ['1001'])).rejects.toThrow();
-    expect(errSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('nothing to update');
-    exit.mockRestore();
-    errSpy.mockRestore();
+    await expect(update('1001')).rejects.toThrow('Nothing to update');
   });
 });
 
@@ -206,7 +185,7 @@ describe('push', () => {
       f,
       JSON.stringify({ odin_user_log_id: 1002, odin_user_log_comment: 'edited', bogus_key: 1 }),
     );
-    await run('push', [f]);
+    await push(f);
 
     const sent = sentPayload();
     expect(Object.keys(sent)).toHaveLength(342);
@@ -218,14 +197,7 @@ describe('push', () => {
   it('fails when the file has no odin_user_log_id', async () => {
     const f = join(tmp, 'noid.json');
     writeFileSync(f, JSON.stringify({ odin_user_log_comment: 'orphan' }));
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    await expect(run('push', [f])).rejects.toThrow();
-    expect(errSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('no odin_user_log_id');
-    exit.mockRestore();
-    errSpy.mockRestore();
+    await expect(push(f)).rejects.toThrow('no odin_user_log_id');
   });
 });
 
@@ -233,17 +205,10 @@ describe('credentials', () => {
   it('fails without creds and makes no network call', async () => {
     delete process.env.SSI_EMAIL;
     delete process.env.SSI_PASSWORD;
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    await expect(run('list', [])).rejects.toThrow();
-
-    expect(errSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('not logged in');
+    await expect(list()).rejects.toBeInstanceOf(CliError);
+    await expect(list()).rejects.toThrow('Not logged in');
     expect(fetchMock).not.toHaveBeenCalled();
-    exit.mockRestore();
-    errSpy.mockRestore();
   });
 
   it('falls back to a stored auth.json when no flags or env creds', async () => {
@@ -251,7 +216,7 @@ describe('credentials', () => {
     delete process.env.SSI_PASSWORD;
     saveAuth({ email: 'stored@example.com', password: 'storedpw' });
 
-    await run('list', []);
+    await list();
 
     const authCall = fetchMock.mock.calls.find((c) =>
       String(c[0]).includes('what=authenticate'),
@@ -264,7 +229,7 @@ describe('credentials', () => {
   it('accepts --email/--password flags', async () => {
     delete process.env.SSI_EMAIL;
     delete process.env.SSI_PASSWORD;
-    await run('list', ['--email', 'flag@example.com', '--password', 'flagpw']);
+    await list({ email: 'flag@example.com', password: 'flagpw' });
     const authCall = fetchMock.mock.calls.find((c) =>
       String(c[0]).includes('what=authenticate'),
     )!;

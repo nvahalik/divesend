@@ -22,6 +22,9 @@ import {
   serializeWithForcedDoubles,
   SAMPLE_DOUBLE_FIELDS,
   type SsiSample,
+  type CanonicalDive,
+  type DiveHeader,
+  type DiveSample,
 } from '@divesend/core';
 
 // Confirmed from a real export cross-checked against its UDDF sibling.
@@ -305,4 +308,69 @@ export function convertToSsiPayload(parsed: ParsedShearwater): Record<string, un
   }
 
   return payload;
+}
+
+/**
+ * Thin projection of a parsed Shearwater dive onto `@divesend/core`'s
+ * `CanonicalDive` -- the shape `toUddf` consumes. Used only by `divesend
+ * convert --to uddf`: it carries the depth / time / temperature / tank-pressure
+ * profile plus the gas, gradient-factor, device and start-time header fields
+ * UDDF needs, and leaves the SSI-only extras (CNS, alarm bits, firmware)
+ * behind. The SSI path (`convertToSsiPayload`) does NOT route through here.
+ */
+export function toCanonicalDive(parsed: ParsedShearwater): CanonicalDive {
+  const { header, records } = parsed;
+  const imperial = header.imperialUnits === 'true';
+  const ssiSamples = buildSamples(records, imperial);
+
+  const samples: DiveSample[] = ssiSamples.map((s) => ({
+    timeS: s.t / 1000,
+    depthM: s.d,
+    tempC: s.te,
+    ndlS: s.ndl != null ? s.ndl * 60 : null,
+    tankPressureBar: s.pressure ?? null,
+    decoStopDepthM: null,
+    ttsS: null,
+  }));
+
+  const withPressure = samples.filter((s) => s.tankPressureBar != null);
+
+  const maxDepthRaw = Number(header.maxDepth);
+  const maxDepthM = Number.isFinite(maxDepthRaw)
+    ? roundHalfToEven(imperial ? maxDepthRaw * FT_TO_M : maxDepthRaw, 2)
+    : samples.length
+      ? Math.max(...samples.map((s) => s.depthM))
+      : 0;
+
+  const productCode = header.product != null ? parseInt(header.product, 10) : -1;
+  const model = PRODUCT_CODES[productCode] ?? `Shearwater (product ${productCode})`;
+
+  const firstFracRaw = records.length ? records[0].fractionO2 : null;
+  const o2Fraction =
+    firstFracRaw != null && firstFracRaw.trim() !== '' ? Number(firstFracRaw) : 0.21;
+
+  const startDt = parseShearwaterDatetime(header.startDate ?? '');
+
+  const canonicalHeader: DiveHeader = {
+    startTime: fmtIsoMs(startDt),
+    maxDepthM,
+    gasO2Percent: roundHalfToEven(o2Fraction * 100, 1),
+    gasHePercent: 0,
+    tankBeginPressureBar: withPressure.length ? withPressure[0].tankPressureBar : null,
+    tankEndPressureBar: withPressure.length
+      ? withPressure[withPressure.length - 1].tankPressureBar
+      : null,
+    diveMode: 'oc',
+    decoModel: 'buhlmann',
+    gfLow: num(header.gfMin, 'int') ?? 0,
+    gfHigh: num(header.gfMax, 'int') ?? 0,
+    salinity: 'salt',
+    deviceModel: model,
+    divetimeS: parseInt(header.maxTime ?? '0', 10) || 0,
+    minTemperatureC: null,
+    maxTemperatureC: null,
+    cnsPercent: null,
+  };
+
+  return { header: canonicalHeader, samples };
 }

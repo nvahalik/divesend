@@ -12,7 +12,8 @@ vi.mock('../../src/ssi/client.js', () => ({
 }));
 
 import { authenticate } from '../../src/ssi/client.js';
-import { run } from '../../src/commands/login.js';
+import { login, logout } from '../../src/commands/login.js';
+import { CliError } from '../../src/io.js';
 import { authFilePath, saveAuth } from '../../src/auth.js';
 
 const authMock = authenticate as unknown as ReturnType<typeof vi.fn>;
@@ -41,19 +42,19 @@ afterEach(() => {
 
 describe('login (flags)', () => {
   it('verifies with authenticate, writes the file, reports the email', async () => {
-    await run('login', ['--email', 'a@b.c', '--password', 'pw']);
+    await login({ email: 'a@b.c', password: 'pw' });
 
     expect(authMock).toHaveBeenCalledWith('a@b.c', 'pw');
     expect(existsSync(authFilePath())).toBe(true);
-    expect(stderrText()).toContain('logged in as a@b.c');
+    expect(stderrText()).toContain('Logged in as a@b.c.');
   });
 
   it('does not write the file when authenticate rejects', async () => {
     authMock.mockRejectedValue(new Error('Authentication failed: bad login'));
 
-    await expect(
-      run('login', ['--email', 'a@b.c', '--password', 'bad']),
-    ).rejects.toThrow('Authentication failed');
+    await expect(login({ email: 'a@b.c', password: 'bad' })).rejects.toThrow(
+      'Authentication failed',
+    );
 
     expect(existsSync(authFilePath())).toBe(false);
   });
@@ -63,21 +64,15 @@ describe('login --status', () => {
   it('prints the stored email when logged in', async () => {
     saveAuth({ email: 'stored@example.com', password: 'pw' });
 
-    await run('login', ['--status']);
+    await login({ status: true });
 
-    expect(stderrText()).toContain('logged in as stored@example.com');
+    expect(stderrText()).toContain('Logged in as stored@example.com.');
     expect(stderrText()).not.toContain('pw');
   });
 
-  it('exits 1 when not logged in', async () => {
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-
-    await expect(run('login', ['--status'])).rejects.toThrow('exit');
-    expect(stderrText()).toContain('not logged in');
-
-    exit.mockRestore();
+  it('fails when not logged in', async () => {
+    await expect(login({ status: true })).rejects.toBeInstanceOf(CliError);
+    await expect(login({ status: true })).rejects.toThrow('Not logged in.');
   });
 });
 
@@ -85,14 +80,14 @@ describe('logout', () => {
   it('removes the file and never throws', async () => {
     saveAuth({ email: 'a@b.c', password: 'pw' });
 
-    await run('logout', []);
+    logout();
 
     expect(existsSync(authFilePath())).toBe(false);
-    expect(stderrText()).toContain('logged out');
+    expect(stderrText()).toContain('Logged out.');
   });
 
-  it('does not throw when there is nothing to remove', async () => {
-    await expect(run('logout', [])).resolves.toBeUndefined();
-    expect(stderrText()).toContain('logged out');
+  it('does not throw when there is nothing to remove', () => {
+    expect(() => logout()).not.toThrow();
+    expect(stderrText()).toContain('Logged out.');
   });
 });

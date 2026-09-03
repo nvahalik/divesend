@@ -27,32 +27,56 @@ While unpublished, run the local build directly:
 
 ```sh
 npm run build --workspaces --if-present   # from the repo root, builds core + cli
-node cli/dist/cli.js <subcommand> [options]
+node cli/dist/cli.js <command> [options]
 ```
 
-## Subcommands
+Every command has its own help: `divesend <command> --help`. `divesend --help`
+lists them all, `divesend --version` prints the version.
 
-The converters read a positional file (or stdin with `-`) and write JSON/UDDF to
-stdout, or to a file with `-o <path>`.
+Diagnostic messages (errors, "Wrote …" notices) are lightly coloured when stderr
+is a terminal. Set `NO_COLOR=1` to disable it, or `FORCE_COLOR=1` to keep it
+through a pipe.
+
+## Converting dive files
+
+`divesend convert` reads a file argument (or the dive data piped on stdin) and
+writes to stdout, or to a file with `-o <path>`. The input format is
+auto-detected from the file; pass `--from` to force it. Output defaults to SSI
+`save_divelog` JSON (`--to ssi`); `--to uddf` emits UDDF instead.
+
+| `--from`  | input                                        |
+| --------- | -------------------------------------------- |
+| `fit`     | Garmin FIT                                   |
+| `sw-xml`  | Shearwater Cloud XML export                  |
+| `dc-xml`  | `dctool` / libdivecomputer "dctool parse" XML |
 
 ```sh
-# Garmin FIT -> SSI save_divelog JSON
-divesend fit2ssi dive.fit -o dive.ssi.json
+# Any supported file -> SSI save_divelog JSON (format sniffed from the bytes)
+divesend convert dive.fit -o dive.ssi.json
+divesend convert shearwater-export.xml -o dive.ssi.json
+divesend convert dive.dctool.xml -o dive.ssi.json
 
-# Shearwater Cloud XML -> SSI save_divelog JSON
-divesend sw-xml2ssi shearwater-export.xml -o dive.ssi.json
+# ... or -> UDDF
+divesend convert dive.dctool.xml --to uddf -o dive.uddf
+divesend convert dive.fit --to uddf -o dive.uddf
 
-# dctool / libdivecomputer "dctool parse" XML -> SSI save_divelog JSON
-divesend dctool2ssi dive.dctool.xml -o dive.ssi.json
+# Read from stdin
+cat dive.fit | divesend convert --to uddf > dive.uddf
 
-# dctool / libdivecomputer XML -> UDDF
-divesend dctool2uddf dive.dctool.xml -o dive.uddf
+# Force the input format when detection can't (e.g. an unusual XML)
+divesend convert weird.xml --from dc-xml
 ```
 
-The logbook commands need SSI credentials (see below):
+> UDDF from FIT / Shearwater is a thinner profile than from `dc-xml` — depth,
+> time, temperature, tank pressure, gas, and gradient factors — since those
+> paths project through the leaner canonical dive shape.
+
+## Logbook commands
+
+These need SSI credentials (see [Credentials](#credentials)):
 
 ```sh
-# List every dive in the logbook
+# List every dive in the logbook (add --json for the raw objects)
 divesend list
 
 # Dump one dive's fields as JSON (or a single field with --field)
