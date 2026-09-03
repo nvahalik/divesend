@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # core is a build dependency of the CLI and app (consumed via its dist/).
+      - run: npm run build -w @divesend/core
+
+      - run: npm test
+
+      - run: npm run lint -w app
+
+      # The web app's build compiles @divesend/libdivecomputer-wasm, which needs
+      # the Emscripten SDK on PATH. Third-party action; installs latest emsdk.
+      - uses: mymindstorm/setup-emsdk@v14
+
+      - run: npm run build

@@ -1,0 +1,52 @@
+{
+  "name": "divesend",
+  "version": "0.1.0",
+  "description": "Offline Garmin FIT / Shearwater dive-file -> SSI converters, plus a direct SSI logbook client.",
+  "keywords": [
+    "ssi",
+    "divessi",
+    "scuba",
+    "freediving",
+    "dive-log",
+    "divelog",
+    "garmin",
+    "fit",
+    "shearwater",
+    "uddf",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "Nick Vahalik",
+  "homepage": "https://divesend.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nvahalik/divesend.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/nvahalik/divesend/issues",
+  "type": "module",
+  "bin": {
+    "divesend": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/postbuild.mjs",
+    "prepack": "npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@divesend/core": "^0.1.0",
+    "@garmin/fitsdk": "^21.171.0",
+    "fast-xml-parser": "^5.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DiveSend — Privacy Policy</title>
+<link rel="icon" type="image/png" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans leading-relaxed">
+  <div class="max-w-2xl mx-auto px-6 pt-16 pb-20">
+    <a class="inline-block mb-6 text-sm text-slate-500 hover:underline" href="index.html">&larr; DiveSend</a>
+    <h1 class="text-3xl font-bold tracking-tight mb-1">Privacy Policy</h1>
+    <p class="text-sm text-slate-500 mb-10">Effective August 22, 2026</p>
+
+    <p>DiveSend is developed and published by Nick Vahalik, an individual developer, not a company. This policy explains what data DiveSend collects, how it's used, and who it's shared with.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">What DiveSend does</h2>
+    <p>DiveSend connects over Bluetooth to a dive computer you own, downloads your dive logs from it, and — if you choose to sign in with your Scuba Schools International (SSI) account — sends those dive logs to SSI so they appear in your Logbook.</p>
+    <p>DiveSend does not operate its own server or backend. It only talks to Apple's Bluetooth APIs, your dive computer, and SSI's own servers (<code>api.divessi.com</code>) directly from your device.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">Information we collect</h2>
+    <ul class="list-disc pl-5 space-y-2">
+      <li><strong>SSI account credentials.</strong> If you sign in, your email address and password are sent directly to SSI to authenticate you. DiveSend stores them in your device's Keychain (protected, device-only, never synced to iCloud or any DiveSend-controlled server) so you don't have to re-enter them every time.</li>
+      <li><strong>Dive log data.</strong> Dive date, time, depth, duration, gas mix, water temperature, and GPS coordinates recorded by your dive computer (if it has GPS), along with your dive computer's model and serial number. This is read from your dive computer over Bluetooth, stored on your device, and — only when you tap to send a dive — transmitted to your SSI account.</li>
+      <li><strong>Bluetooth connection data.</strong> DiveSend uses Bluetooth solely to connect to your own dive computer. It does not scan for or track other devices.</li>
+    </ul>
+    <p class="mt-4">DiveSend does not collect analytics, advertising identifiers, or any data for tracking purposes, and does not use any third-party analytics or advertising SDKs.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">How your data is used</h2>
+    <p>All data DiveSend handles is used solely to let you view your dive history on your device and, at your request, upload it to your own SSI account. Nothing is used for advertising, sold, or shared with any party other than SSI, and only as needed to complete the sync you initiate.</p>
+    <p>Once dive data reaches SSI, its handling is governed by SSI's own privacy policy, not this one.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">Data storage and retention</h2>
+    <p>Dive logs are stored locally on your device. You can delete individual dives from within the app at any time, which removes them from your device (this does not delete them from your dive computer's memory or from your SSI account — those are managed separately). Your SSI credentials remain in the device Keychain until you sign out or delete the app.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">Your choices</h2>
+    <p>Signing in with SSI is optional — you can use DiveSend to download and review dives from your dive computer without ever connecting an SSI account. (But, seriously, why would you do that? There are better apps out there!) Bluetooth access can be revoked at any time in iOS Settings, which will prevent DiveSend from reading new dives.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">Children's privacy</h2>
+    <p>DiveSend is not directed at children under 13, and we do not knowingly collect data from children under 13.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">Changes to this policy</h2>
+    <p>If this policy changes, the updated version will be posted at this URL with a new effective date.</p>
+
+    <h2 class="text-lg font-semibold mt-10 mb-2">Contact</h2>
+    <p>Questions about this policy or your data: <a class="text-cyan-700 hover:underline" href="mailto:nick@nickvahalik.com">nick@nickvahalik.com</a></p>
+  </div>
+</body>
+</html>

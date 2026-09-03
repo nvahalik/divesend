@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DiveSend — Send your dives straight to SSI</title>
+<meta name="description" content="DiveSend pulls dive logs from any Bluetooth (BLE) dive computer and sends them straight to your SSI Logbook, no cloud account required.">
+<link rel="icon" type="image/png" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans leading-relaxed">
+  <div class="max-w-3xl mx-auto px-6">
+    <header class="text-center pt-24 pb-16">
+      <img class="w-24 h-24 rounded-[22px] mx-auto mb-7 shadow-lg shadow-cyan-900/25" src="icon-180.png" alt="DiveSend app icon">
+      <h1 class="text-4xl font-bold tracking-tight mb-3">DiveSend</h1>
+      <p class="text-lg text-slate-500 max-w-md mx-auto">DiveSend allows you to send dive logs from <em>any</em> Bluetooth (BLE) enabled dive computer and send it to your SSI dive log. No more manual entry.</p>
+      <div class="mt-8">
+        <a href="#" class="inline-block px-6 py-3 bg-slate-900 text-white no-underline rounded-lg font-semibold text-sm">Download on the App Store</a>
+      </div>
+    </header>
+
+    <section class="py-10 grid grid-cols-1 sm:grid-cols-3 gap-5">
+      <div class="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 class="text-base font-semibold mb-2">Direct from your computer</h3>
+        <p class="text-slate-500 text-sm m-0">Connects to your dive computer over Bluetooth and reads your dives directly — nothing routes through a third-party cloud service.</p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 class="text-base font-semibold mb-2">Straight to SSI</h3>
+        <p class="text-slate-500 text-sm m-0">Sign in with your SSI account and send dives right into your Logbook, matched to your certifications.</p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 class="text-base font-semibold mb-2">Your data stays yours</h3>
+        <p class="text-slate-500 text-sm m-0">Dive logs are stored on your device. DiveSend has no server of its own, no analytics, and no ads.</p>
+      </div>
+    </section>
+
+    <section class="py-10 border-t border-slate-200">
+      <h2 class="text-2xl font-bold tracking-tight mb-3">Why DiveSend exists</h2>
+      <p class="text-slate-600">SSI's own app already syncs dives automatically from a growing list of supported dive computers. DiveSend exists for the rest of us: SSI divers whose dive computer isn't on that list yet, who'd otherwise have to type every dive into their Logbook by hand.</p>
+      <p class="text-slate-600 mt-3">Because it works by reading raw data off a wide range of Bluetooth-enabled dive computers rather than a single supported model, results can vary — see below.</p>
+      <div class="mt-5 bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 text-sm">
+        <strong>DiveSend isn't a dive log app itself</strong> — it just gets your dives from your dive computer into your SSI Logbook. Also, DiveSend only supports SSI!
+      </div>
+    </section>
+
+    <section class="py-10 border-t border-slate-200">
+      <h2 class="text-2xl font-bold tracking-tight mb-3">Supported dive computers</h2>
+      <p class="text-slate-600 mb-4">As of SSI app version 5.0.36, the dive computers below sync directly with the official SSI app. <strong>If your dive computer is on this list, you don't need DiveSend</strong> — connect it directly in the SSI app instead.</p>
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">Mares</h3>
+          <ul class="text-slate-600 text-sm space-y-1">
+            <li>Puck Pro</li>
+            <li>Puck Lite</li>
+            <li>Puck Pro Ultra</li>
+            <li>Puck Pro EZ</li>
+            <li>Puck4</li>
+            <li>Puck Air 2</li>
+            <li>Matrix</li>
+            <li>Smart</li>
+            <li>Smart Air</li>
+            <li>Smart Apnea</li>
+            <li>Quad</li>
+            <li>Quad Air</li>
+            <li>Quad Ci</li>
+            <li>Quad2</li>
+            <li>Genius</li>
+            <li>Horizon</li>
+            <li>Sirius</li>
+            <li>Sirius L</li>
+            <li>Sirius Hunter</li>
+          </ul>
+        </div>
+        <div class="space-y-5">
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">Suunto</h3>
+            <ul class="text-slate-600 text-sm space-y-1">
+              <li>EON Core</li>
+              <li>D5</li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">Aqualung / Apeks</h3>
+            <ul class="text-slate-600 text-sm space-y-1">
+              <li>i300C</li>
+              <li>i200C</li>
+              <li>i770R i550C</li>
+              <li>i470TC</li>
+              <li>i330R</li>
+              <li>DSX</li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">Shearwater</h3>
+            <ul class="text-slate-600 text-sm space-y-1">
+              <li>Perdix 2</li>
+              <li>Tern</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="py-10 border-t border-slate-200">
+      <h2 class="text-2xl font-bold tracking-tight mb-3">No warranty</h2>
+      <p class="text-slate-600">DiveSend is provided as-is, with no warranty of any kind — always spot-check an imported dive against your dive computer before relying on it.</p>
+      <p class="text-slate-600 mt-3">DiveSend reads the data your dive computer already recorded, transforms it as best it can into the format SSI's Logbook expects, and sends it along. It doesn't invent or verify dive data beyond what your computer reports.</p>
+      <p class="text-slate-600 mt-3">I've directly verified this process against a single device, the Shearwater Teric. Other Bluetooth-enabled dive computers should work in the same way in theory, but haven't all been individually tested, and there could be bugs, gaps, or inaccuracies in how a given model's data is read or converted. I've not tested stuff like multi-gas setups, Nitrox, GPS, etc. In <em>theory</em> it should all work.</p>
+    </section>
+
+    <section class="py-10 border-t border-slate-200">
+      <h2 class="text-2xl font-bold tracking-tight mb-3">A personal project</h2>
+      <p class="text-slate-600">I wrote DiveSend for myself, because I want to sync up to the SSI app as quickly as possible and have as much data as my dive computer can give. But it isn't currently supported. I'm sharing it in case it's useful to other divers in the same spot.</p>
+      <p class="text-slate-600 mt-3">Feel free to email me if you have issues or want to give feedback. Just keep in mind that although I'm a professional developer, this is a hobby project I maintain in my spare time, not a full time gig.</p>
+    </section>
+
+    <section class="py-10 border-t border-slate-200">
+      <h2 class="text-2xl font-bold tracking-tight mb-3">Supporting the project</h2>
+      <p class="text-slate-600">If DiveSend has saved you some manual data entry and you'd like to say thanks (or otherwise support this work), you can <a class="text-cyan-700 hover:underline" href="https://buymeacoffee.com/nickvahalik" target="_blank" rel="noopener">buy me a tank refill</a> — totally optional, but greatly appreciated!</p>
+    </section>
+
+    <section class="py-10 border-t border-slate-200">
+      <h2 class="text-2xl font-bold tracking-tight mb-3">Open source, under the hood</h2>
+      <p class="text-slate-600">DiveSend wouldn't exist without a couple of great open source projects:</p>
+      <ul class="text-slate-600 list-disc pl-5 mt-3 space-y-1">
+        <li><a class="text-cyan-700 hover:underline" href="https://www.libdivecomputer.org" target="_blank" rel="noopener">libdivecomputer</a> (via <a class="text-cyan-700 hover:underline" href="https://github.com/deepsealabs/libdc-swift/" rel="noopener">libdc-swift</a>), which does the heavy lifting of talking to dive computers from dozens of manufacturers.</li>
+        <li><a class="text-cyan-700 hover:underline" href="https://github.com/weichsel/ZIPFoundation" target="_blank" rel="noopener">ZIPFoundation</a>, used to package up raw dive data for export.</li>
+      </ul>
+    </section>
+
+    <footer class="border-t border-slate-200 text-center text-sm text-slate-500 pt-8 pb-16">
+      <p>Made by Nick Vahalik. Questions or support: <a class="text-cyan-700 hover:underline" href="mailto:nick@nickvahalik.com">nick@nickvahalik.com</a></p>
+      <p><a class="text-cyan-700 hover:underline" href="privacy.html">Privacy Policy</a></p>
+      <p class="mt-4 text-xs text-slate-400 max-w-lg mx-auto">SSI is a trademark of Scuba Schools International. DiveSend is an independent, unofficial app and is not affiliated with, endorsed by, or sponsored by SSI.</p>
+    </footer>
+  </div>
+</body>
+</html>

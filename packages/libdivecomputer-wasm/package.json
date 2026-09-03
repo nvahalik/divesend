@@ -1,0 +1,25 @@
+{
+  "name": "@divesend/libdivecomputer-wasm",
+  "version": "0.0.0",
+  "private": true,
+  "description": "libdivecomputer + a custom Web Bluetooth transport, compiled to WASM for the DiveSend web app.",
+  "license": "MIT",
+  "author": "Nick Vahalik",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nvahalik/divesend.git",
+    "directory": "packages/libdivecomputer-wasm"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./libdivecomputer.js": "./dist/libdivecomputer.js",
+    "./libdivecomputer.wasm": "./dist/libdivecomputer.wasm",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "./build.sh",
+    "clean": "rm -rf build dist"
+  }
+}

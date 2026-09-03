@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WebBLE libdivecomputer PoC</title>
+</head>
+<body>
+<h1>WebBLE libdivecomputer PoC</h1>
+<p>
+  Service UUID: <input id="service-uuid" size="40" value="fe25c237-0ece-443c-b0aa-e02033e7029d"><br>
+  Characteristic UUID: <input id="characteristic-uuid" size="40" value="27b7570b-359e-45a3-91bb-cf7e70049bd2">
+</p>
+<button id="pick-device">Pick Device</button>
+<button id="connect" disabled>Connect</button>
+<pre id="log" style="background:#111;color:#0f0;padding:1em;height:300px;overflow:auto;"></pre>
+
+<script src="main.js"></script>
+<!-- engine/ is a symlink to ../packages/libdivecomputer-wasm/dist -- build it first:
+     source ~/Code/emsdk/emsdk_env.sh && npm run build -w @divesend/libdivecomputer-wasm -->
+<script src="engine/libdivecomputer.js"></script>
+</body>
+</html>

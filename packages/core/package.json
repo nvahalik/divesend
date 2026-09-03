@@ -1,0 +1,51 @@
+{
+  "name": "@divesend/core",
+  "version": "0.1.0",
+  "description": "Shared SSI dive-log payload schema, transformer, and enum tables for the DiveSend tools.",
+  "keywords": [
+    "ssi",
+    "scuba",
+    "freediving",
+    "dive-log",
+    "divelog",
+    "divessi"
+  ],
+  "license": "MIT",
+  "author": "Nick Vahalik",
+  "homepage": "https://divesend.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nvahalik/divesend.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/nvahalik/divesend/issues",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "prepack": "tsc",
+    "test": "vitest run"
+  }
+}

@@ -1,0 +1,15 @@
+# Build output -- regenerable via ./build.sh (needs the Emscripten SDK)
+build/
+dist/
+
+# Autotools droppings if anyone ever runs ./configure in the vendored tree
+vendor/libdivecomputer/config.h
+vendor/libdivecomputer/config.log
+vendor/libdivecomputer/config.status
+vendor/libdivecomputer/Makefile
+vendor/libdivecomputer/src/Makefile
+vendor/libdivecomputer/libtool
+vendor/libdivecomputer/**/*.o
+vendor/libdivecomputer/**/*.lo
+vendor/libdivecomputer/**/.deps
+vendor/libdivecomputer/**/.libs

@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "divesend-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "divesend",
+      "database_id": "fa6159e8-c382-4918-9269-f4577504eed9",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "kv_namespaces": [
+    { "binding": "SSI_TOKEN_CACHE", "id": "94221ef62b0c45b4a19ef9d3edf6b37f" }
+  ]
+}

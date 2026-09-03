@@ -1,0 +1,85 @@
+{
+  "logbook_sites": [
+    {
+      "odin_dive_sites_id": 5001,
+      "odin_dive_sites_name": "Stillhouse Quarry",
+      "odin_dive_sites_meta_country": "United States",
+      "odin_countries_code_iso": "US"
+    },
+    {
+      "odin_dive_sites_id": 5002,
+      "odin_dive_sites_name": "Blue Grotto Cavern, Florida",
+      "odin_dive_sites_meta_country": "United States",
+      "odin_countries_code_iso": "US"
+    }
+  ],
+  "logbook_buddies": [
+    {
+      "id": 3718067,
+      "firstname": "Tyler",
+      "lastname": "McEowen"
+    },
+    {
+      "id": 4000001,
+      "firstname": "Jane",
+      "lastname": "Diver"
+    }
+  ],
+  "logbook_details": [
+    {
+      "odin_user_log_id": 1001,
+      "odin_user_log_nr": 1,
+      "odin_user_log_user_master_id": 5012047,
+      "odin_user_log_date": "2026-06-01",
+      "odin_user_log_datetime": "2026-06-01 15:28",
+      "odin_user_log_dive_sites_id": 5001,
+      "odin_user_log_buddy_ids": [3718067],
+      "odin_user_log_depth_m": 9.6,
+      "odin_user_log_divetime": 38,
+      "odin_user_log_rating": 5,
+      "odin_user_log_weight_kg": 0.9,
+      "odin_user_log_var_weather_id": 1,
+      "odin_user_log_var_current_id": 6,
+      "odin_user_log_divecomputer_manufacturer": "Shearwater",
+      "odin_user_log_divecomputer_name": "Teric",
+      "odin_user_log_gear": [],
+      "odin_user_log_comment": "Clear and calm"
+    },
+    {
+      "odin_user_log_id": 1002,
+      "odin_user_log_nr": 2,
+      "odin_user_log_date": "2026-07-15",
+      "odin_user_log_datetime": "2026-07-15 10:00",
+      "odin_user_log_dive_sites_id": 5002,
+      "odin_user_log_buddy_ids": [],
+      "odin_user_log_depth_m": 18.3,
+      "odin_user_log_divetime": 42,
+      "odin_user_log_rating": 4,
+      "odin_user_log_weight_kg": 2.3,
+      "odin_user_log_var_weather_id": 2,
+      "odin_user_log_var_current_id": 7,
+      "odin_user_log_divecomputer_manufacturer": "Shearwater",
+      "odin_user_log_divecomputer_name": "Teric",
+      "odin_user_log_gear": [382015],
+      "odin_user_log_comment": ""
+    },
+    {
+      "odin_user_log_id": 1003,
+      "odin_user_log_nr": 3,
+      "odin_user_log_date": "2026-08-10",
+      "odin_user_log_datetime": "2026-08-10 09:15",
+      "odin_user_log_dive_sites_id": 5002,
+      "odin_user_log_buddy_ids": [3718067, 4000001],
+      "odin_user_log_depth_m": 15.0,
+      "odin_user_log_divetime": 40,
+      "odin_user_log_rating": 5,
+      "odin_user_log_weight_kg": 2.3,
+      "odin_user_log_var_weather_id": 3,
+      "odin_user_log_var_current_id": 6,
+      "odin_user_log_divecomputer_manufacturer": "Shearwater",
+      "odin_user_log_divecomputer_name": "Teric",
+      "odin_user_log_gear": [],
+      "odin_user_log_comment": "Cave tour"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+# Secrets / credentials
+.env.local
+.env
+
+# Captured traffic -- contains plaintext passwords and live session/AWS tokens
+*.har
+*.mitm
+
+# Extracted/decompiled app artifacts -- large, copyrighted, regenerable
+*.xapk
+*.apk
+*.ipa
+ssi-app/
+shearwater_il/
+
+# macOS
+.DS_Store
+
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Recall session logs
+.recall/
+
+# Worktrees/workspaces for isolated feature work
+.worktrees/
+
+# Superpowers -- brainstorming plans/specs and visual-companion scratch; not part of the repo
+.superpowers/
+docs/superpowers/
+
+# Personal dive export data
+shearwater-teric-*.xml
+shearwater-teric-*.uddf
+shearwater-teric-*.zxu
+shearwater-summary.csv

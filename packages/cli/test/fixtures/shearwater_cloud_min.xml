@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-16"?>
+<dl7>
+  <diveLog>
+    <imperialUnits>true</imperialUnits>
+    <maxDepth>60</maxDepth>
+    <maxTime>1830</maxTime>
+    <startDate>07/28/2026 01:30:00 PM</startDate>
+    <product>8</product>
+    <gfMin>85</gfMin>
+    <gfMax>85</gfMax>
+    <computerSerial>1234567</computerSerial>
+    <computerFirmware>92</computerFirmware>
+    <startCns>0</startCns>
+    <endCns>3</endCns>
+    <diveLogRecords>
+      <diveLogRecord>
+        <currentTime>0</currentTime>
+        <currentDepth>10</currentDepth>
+        <waterTemp>78</waterTemp>
+        <currentNdl>99</currentNdl>
+        <tank0pressurePSI>3000</tank0pressurePSI>
+        <firstStopDepth>0</firstStopDepth>
+        <fractionO2>0.21</fractionO2>
+      </diveLogRecord>
+      <diveLogRecord>
+        <currentTime>60000</currentTime>
+        <currentDepth>59</currentDepth>
+        <waterTemp>75</waterTemp>
+        <currentNdl>15</currentNdl>
+        <tank0pressurePSI>2800</tank0pressurePSI>
+        <firstStopDepth>0</firstStopDepth>
+        <fractionO2>0.21</fractionO2>
+      </diveLogRecord>
+      <diveLogRecord>
+        <currentTime>120000</currentTime>
+        <currentDepth>25</currentDepth>
+        <waterTemp>75</waterTemp>
+        <currentNdl>25</currentNdl>
+        <tank0pressurePSI>2600</tank0pressurePSI>
+        <firstStopDepth>10</firstStopDepth>
+        <fractionO2>0.21</fractionO2>
+      </diveLogRecord>
+      <diveLogRecord>
+        <currentTime>180000</currentTime>
+        <currentDepth>2</currentDepth>
+        <waterTemp>76</waterTemp>
+        <currentNdl>99</currentNdl>
+        <tank0pressurePSI>2500</tank0pressurePSI>
+        <firstStopDepth>0</firstStopDepth>
+        <fractionO2>0.21</fractionO2>
+      </diveLogRecord>
+    </diveLogRecords>
+  </diveLog>
+</dl7>
