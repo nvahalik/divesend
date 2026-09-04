@@ -18,12 +18,12 @@ import {
 } from '@divesend/core/parsers/shearwaterXml';
 import { parseDctoolXml } from '@divesend/core/parsers/dctoolXml';
 import { toUddf } from '@divesend/core/parsers/uddf';
+import { detectFormat, type DiveFileFormat } from '@divesend/core/parsers/detectFormat';
 import { ssiDateFields } from '../dateFields.js';
 
-export type Format = 'fit' | 'sw-xml' | 'dc-xml';
 export type Target = 'ssi' | 'uddf';
 
-const FORMATS: readonly Format[] = ['fit', 'sw-xml', 'dc-xml'];
+const FORMATS: readonly DiveFileFormat[] = ['fit', 'sw-xml', 'dc-xml'];
 const TARGETS: readonly Target[] = ['ssi', 'uddf'];
 
 export interface ConvertOptions {
@@ -39,19 +39,6 @@ export interface ConvertOptions {
 const noInput = (file?: string): boolean =>
   (!file || file === '-') && process.stdin.isTTY === true;
 
-/** Sniff the input format from its leading bytes. Returns null if unrecognised. */
-export function detectFormat(buf: Buffer): Format | null {
-  // FIT: the 12-byte file header always carries the ASCII ".FIT" data-type
-  // signature at offset 8, regardless of protocol version.
-  if (buf.length >= 12 && buf.subarray(8, 12).toString('latin1') === '.FIT') {
-    return 'fit';
-  }
-  const head = buf.subarray(0, 4096).toString('utf8');
-  if (/<dl7[\s/>]/i.test(head)) return 'sw-xml'; // Shearwater Cloud DL7 export
-  if (/<(device|dive)[\s/>]/i.test(head)) return 'dc-xml'; // libdivecomputer dctool XML
-  return null;
-}
-
 /**
  * Convert a dive file and write the result to stdout or `options.output`.
  * With no `file` (or `-`), reads the dive data from stdin.
@@ -65,7 +52,7 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
   if (!TARGETS.includes(to)) {
     fail(`Unknown --to "${options.to}". Expected "ssi" or "uddf".`);
   }
-  if (options.from != null && !FORMATS.includes(options.from as Format)) {
+  if (options.from != null && !FORMATS.includes(options.from as DiveFileFormat)) {
     fail(`Unknown --from "${options.from}". Expected "fit", "sw-xml", or "dc-xml".`);
   }
 
@@ -75,7 +62,7 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
     fail('The input is empty. Pass a dive file, or pipe one on stdin.');
   }
 
-  const from = (options.from as Format | undefined) ?? detectFormat(buf) ?? undefined;
+  const from = (options.from as DiveFileFormat | undefined) ?? detectFormat(buf) ?? undefined;
   if (!from) {
     fail('Could not detect the input format. Pass --from with "fit", "sw-xml", or "dc-xml".');
   }
@@ -86,7 +73,7 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
 const json = (payload: unknown): string => JSON.stringify(payload, null, 2);
 
 /** Parse `buf` as `from` and serialise it to `to`. */
-function render(from: Format, to: Target, buf: Buffer): string {
+function render(from: DiveFileFormat, to: Target, buf: Buffer): string {
   if (from === 'fit') {
     const parsed = parseFit(new Uint8Array(buf));
     return to === 'uddf' ? toUddf(fitToCanonical(parsed)) : json(fitToSsi(parsed));

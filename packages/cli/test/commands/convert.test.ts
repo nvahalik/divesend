@@ -8,13 +8,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { XMLParser } from 'fast-xml-parser';
-import { convert, detectFormat } from '../../src/commands/convert.js';
+import { convert } from '../../src/commands/convert.js';
+import { detectFormat } from '@divesend/core/parsers/detectFormat';
 import { CliError } from '../../src/io.js';
 
 const SCUBA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.fit', import.meta.url));
 const APNEA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_apnea_descent_mk2.fit', import.meta.url));
 const SW_XML = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_cloud_min.xml', import.meta.url));
 const DC_XML = fileURLToPath(new URL('../../../core/test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
+const UDDF_FIXTURE = fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url));
 
 let tmp: string;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
@@ -45,6 +47,7 @@ describe('detectFormat', () => {
     expect(detectFormat(readFileSync(APNEA_FIT))).toBe('fit');
     expect(detectFormat(readFileSync(SW_XML))).toBe('sw-xml');
     expect(detectFormat(readFileSync(DC_XML))).toBe('dc-xml');
+    expect(detectFormat(readFileSync(UDDF_FIXTURE))).toBe('uddf');
   });
 
   it('returns null for unrecognised bytes', () => {
