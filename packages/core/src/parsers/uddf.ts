@@ -109,6 +109,10 @@ const uddfXmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   isArray: (name) => UDDF_ARRAY_TAGS.has(name),
+  // Serial numbers like "00000000" must stay strings; without this,
+  // fast-xml-parser coerces leading-zero numeric text to a Number and the
+  // leading zeros are lost.
+  numberParseOptions: { leadingZeros: false, hex: false },
 });
 
 function asArray<T>(v: T | T[] | undefined | null): T[] {
@@ -154,7 +158,9 @@ const DIVE_MODE_MAP: Record<string, string> = {
   gauge: 'gauge',
 };
 
-export function parseUddf(xmlText: string): CanonicalDive[] {
+export function parseUddf(
+  xmlText: string,
+): { dive: CanonicalDive; deviceSerial: string | null }[] {
   let root: any;
   try {
     root = uddfXmlParser.parse(xmlText);
@@ -201,7 +207,7 @@ export function parseUddf(xmlText: string): CanonicalDive[] {
     throw new UddfParseError('No <dive> elements found.');
   }
 
-  const dives: CanonicalDive[] = [];
+  const dives: { dive: CanonicalDive; deviceSerial: string | null }[] = [];
 
   for (const diveEl of diveEls) {
     const startTime = textOf(diveEl?.informationbeforedive?.datetime);
@@ -285,8 +291,9 @@ export function parseUddf(xmlText: string): CanonicalDive[] {
     // device model: match equipmentused link ref against divecomputer @id, else first
     const equipRef = diveEl?.informationbeforedive?.equipmentused?.link?.['@_ref'];
     let deviceModel = 'Unknown';
+    let dc: any = null;
     if (divecomputers.length > 0) {
-      let dc = divecomputers[0];
+      dc = divecomputers[0];
       if (equipRef != null) {
         const matched = divecomputers.find((d: any) => String(d?.['@_id']) === String(equipRef));
         if (matched != null) dc = matched;
@@ -294,6 +301,7 @@ export function parseUddf(xmlText: string): CanonicalDive[] {
       const name = textOf(dc?.name);
       if (name != null) deviceModel = name;
     }
+    const deviceSerial = dc != null ? textOf(dc.serialnumber) : null;
 
     const cnsRaw = numOf(diveEl?.informationafterdive?.cns);
     const cnsPercent = cnsRaw != null ? cnsRaw * 100 : null;
@@ -317,7 +325,7 @@ export function parseUddf(xmlText: string): CanonicalDive[] {
       cnsPercent,
     };
 
-    dives.push({ header, samples });
+    dives.push({ dive: { header, samples }, deviceSerial });
   }
 
   return dives;

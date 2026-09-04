@@ -96,7 +96,7 @@ describe('parseUddf', () => {
   });
 
   it('maps dive 1 header fields', () => {
-    const d = parseUddf(uddfText)[0];
+    const { dive: d, deviceSerial } = parseUddf(uddfText)[0];
     expect(d.header.startTime).toBe('2026-07-29T12:25:47Z');
     expect(d.header.divetimeS).toBe(2196);
     expect(d.header.maxDepthM).toBeCloseTo(4.60365868, 1);
@@ -104,10 +104,11 @@ describe('parseUddf', () => {
     expect(d.header.gfHigh).toBe(85);
     expect(d.header.decoModel).toBe('buhlmann');
     expect(d.header.diveMode).toBe('oc');
+    expect(deviceSerial).toBe('00000000'); // the fixture's scrubbed serial
   });
 
   it('maps dive 1 samples with unit conversions', () => {
-    const d = parseUddf(uddfText)[0];
+    const { dive: d } = parseUddf(uddfText)[0];
     expect(d.samples).toHaveLength(442);
     expect(d.samples[0].timeS).toBe(0);
     // temperature: UDDF Kelvin -> Celsius, all plausible
@@ -124,7 +125,7 @@ describe('parseUddf', () => {
   });
 
   it('leaves every P1 enrichment field unset', () => {
-    const d = parseUddf(uddfText)[0];
+    const { dive: d } = parseUddf(uddfText)[0];
     for (const k of [
       'firmwareVersion',
       'cnsStartPercent',
@@ -159,10 +160,21 @@ describe('parseUddf', () => {
       </repetitiongroup></profiledata></uddf>`;
     const dives = parseUddf(xml);
     expect(dives).toHaveLength(2);
-    expect(dives[0].header.startTime).toBe('2026-01-01T10:00:00Z');
-    expect(dives[0].samples).toHaveLength(2);
-    expect(dives[0].samples[1].tempC).toBeCloseTo(288.15 - 273.15, 2);
-    expect(dives[1].header.maxDepthM).toBe(12);
+    expect(dives[0].dive.header.startTime).toBe('2026-01-01T10:00:00Z');
+    expect(dives[0].dive.samples).toHaveLength(2);
+    expect(dives[0].dive.samples[1].tempC).toBeCloseTo(288.15 - 273.15, 2);
+    expect(dives[1].dive.header.maxDepthM).toBe(12);
+  });
+
+  it('resolves deviceSerial to null when there is no divecomputer/serialnumber at all', () => {
+    const xml = `<?xml version="1.0"?><uddf xmlns="http://www.streit.cc/uddf/3.2/" version="3.2.3">
+      <profiledata><repetitiongroup>
+        <dive id="a"><informationbeforedive><datetime>2026-01-01T10:00:00Z</datetime></informationbeforedive>
+          <informationafterdive><greatestdepth>10</greatestdepth><diveduration>600</diveduration></informationafterdive>
+          <samples><waypoint><depth>0</depth><divetime>0</divetime></waypoint></samples></dive>
+      </repetitiongroup></profiledata></uddf>`;
+    const [{ deviceSerial }] = parseUddf(xml);
+    expect(deviceSerial).toBeNull();
   });
 
   it('throws UddfParseError on non-UDDF or zero-dive input', () => {
