@@ -226,5 +226,29 @@ export function transformDive(dive: CanonicalDive, deviceSerialNumber?: string):
     payload.odin_user_log_cns_end = roundTo(header.cnsPercent, 1);
   }
 
+  if (header.firmwareVersion != null) {
+    payload.odin_user_log_divecomputer_firmware = header.firmwareVersion;
+  }
+  if (header.cnsStartPercent != null) {
+    payload.odin_user_log_cns_start = roundTo(header.cnsStartPercent, 1);
+  }
+  if (header.sacVolumeLPerMin != null) {
+    payload.odin_user_log_amv_l = roundTo(header.sacVolumeLPerMin, 2);
+  }
+  if (header.sacPressurePsiPerMin != null) {
+    payload.odin_user_log_amv_psi = roundTo(header.sacPressurePsiPerMin, 2);
+  }
+  if (header.waterTypeId != null) {
+    payload.odin_user_log_var_watertype_id = header.waterTypeId;
+  }
+  if (header.startLatitude != null && header.startLongitude != null) {
+    payload.odin_user_log_pos_start_latitude = header.startLatitude;
+    payload.odin_user_log_pos_start_longitude = header.startLongitude;
+  }
+  if (header.endLatitude != null && header.endLongitude != null) {
+    payload.odin_user_log_pos_end_latitude = header.endLatitude;
+    payload.odin_user_log_pos_end_longitude = header.endLongitude;
+  }
+
   return payload;
 }

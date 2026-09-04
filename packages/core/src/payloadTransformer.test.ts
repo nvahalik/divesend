@@ -172,3 +172,51 @@ describe('transformDive', () => {
     `);
   });
 });
+
+describe('transformDive enrichments — scalars', () => {
+  it('emits firmware, cns_start, amv, water-type when set', () => {
+    const payload = transformDive(
+      makeDive({
+        firmwareVersion: 'V92',
+        cnsStartPercent: 1.234,
+        sacVolumeLPerMin: 12.345,
+        sacPressurePsiPerMin: 33.987,
+        waterTypeId: 4,
+      })
+    );
+    expect(payload.odin_user_log_divecomputer_firmware).toBe('V92');
+    expect(payload.odin_user_log_cns_start).toBe(1.2);
+    expect(payload.odin_user_log_amv_l).toBe(12.35);
+    expect(payload.odin_user_log_amv_psi).toBe(33.99);
+    expect(payload.odin_user_log_var_watertype_id).toBe(4);
+  });
+
+  it('omits every scalar enrichment key when unset', () => {
+    const payload = transformDive(makeDive());
+    for (const k of [
+      'odin_user_log_divecomputer_firmware',
+      'odin_user_log_cns_start',
+      'odin_user_log_amv_l',
+      'odin_user_log_amv_psi',
+      'odin_user_log_var_watertype_id',
+    ]) {
+      expect(payload[k]).toBeUndefined();
+    }
+  });
+
+  it('emits a GPS pair only when both lat and lon are set', () => {
+    const both = transformDive(makeDive({ startLatitude: 34.05, startLongitude: -118.24 }));
+    expect(both.odin_user_log_pos_start_latitude).toBe(34.05);
+    expect(both.odin_user_log_pos_start_longitude).toBe(-118.24);
+
+    const half = transformDive(makeDive({ startLatitude: 34.05 }));
+    expect(half.odin_user_log_pos_start_latitude).toBeUndefined();
+    expect(half.odin_user_log_pos_start_longitude).toBeUndefined();
+  });
+
+  it('emits the end GPS pair independently', () => {
+    const payload = transformDive(makeDive({ endLatitude: 34.06, endLongitude: -118.25 }));
+    expect(payload.odin_user_log_pos_end_latitude).toBe(34.06);
+    expect(payload.odin_user_log_pos_end_longitude).toBe(-118.25);
+  });
+});
