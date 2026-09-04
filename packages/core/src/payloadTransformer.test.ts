@@ -254,3 +254,31 @@ describe('transformDive enrichments — heart rate', () => {
     }
   });
 });
+
+describe('transformDive enrichments — multi-gas', () => {
+  const gasSamples = [0, 0, 1, 1].map((gi, i) => ({
+    timeS: i * 30,
+    depthM: 10 + i,
+    tempC: 22,
+    ndlS: null,
+    tankPressureBar: null,
+    decoStopDepthM: null,
+    ttsS: null,
+    gasMixIndex: gi,
+  }));
+
+  it('sets gn 1-based and gs on the switch sample', () => {
+    const payload = transformDive(
+      makeDive({ gasMixes: [{ o2Percent: 32, hePercent: 0 }, { o2Percent: 50, hePercent: 0 }] }, gasSamples)
+    );
+    const samples = JSON.parse(payload.odin_user_log_diveSamples as string);
+    expect(samples.map((s: { gn: number }) => s.gn)).toEqual([1, 1, 2, 2]);
+    expect(samples.map((s: { gs: number }) => s.gs)).toEqual([0, 0, 1, 0]);
+  });
+
+  it('leaves gn/gs at 0 when gasMixes is unset', () => {
+    const payload = transformDive(makeDive({}, gasSamples)); // gasMixIndex present but no gasMixes
+    const samples = JSON.parse(payload.odin_user_log_diveSamples as string);
+    expect(samples.every((s: { gn: number; gs: number }) => s.gn === 0 && s.gs === 0)).toBe(true);
+  });
+});

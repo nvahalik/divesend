@@ -46,6 +46,10 @@ function buildSSISamples(dive: CanonicalDive): SSISample[] {
   let prevDepthM: number | undefined;
   let prevTimeS: number | undefined;
 
+  const gasMixes = dive.header.gasMixes;
+  const multiGas = Array.isArray(gasMixes) && gasMixes.length > 0;
+  let prevGn = 0;
+
   dive.samples.forEach((s: DiveSample, index: number) => {
     let speed = 0.0;
     if (prevDepthM !== undefined && prevTimeS !== undefined && s.timeS > prevTimeS) {
@@ -70,6 +74,17 @@ function buildSSISamples(dive: CanonicalDive): SSISample[] {
     };
     if (s.tankPressureBar != null) {
       sample.pressure = s.tankPressureBar;
+    }
+
+    // Multi-gas: gn is the 1-based mix number, gs flags a switch from the previous
+    // sample's mix. SSI's exact gn/gs semantics are not round-trip-verified against
+    // a real multi-gas dive read back from SSI -- this is a best-effort mapping,
+    // inert unless a caller populates header.gasMixes + sample.gasMixIndex.
+    if (multiGas && s.gasMixIndex != null && s.gasMixIndex >= 0 && s.gasMixIndex < gasMixes!.length) {
+      const gn = s.gasMixIndex + 1;
+      sample.gn = gn;
+      sample.gs = prevGn !== 0 && gn !== prevGn ? 1 : 0;
+      prevGn = gn;
     }
 
     samples.push(sample);
