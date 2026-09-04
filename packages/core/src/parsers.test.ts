@@ -30,8 +30,9 @@ describe('parseDiveFile', () => {
     expect(dives).toHaveLength(1);
   });
 
-  it('rejects UDDF until parseUddf lands (Task 4)', async () => {
-    await expect(parseDiveFile(fx('garmin_scuba_saint_catherine.uddf'))).rejects.toThrow(/not implemented/);
+  it('sniffs and parses a Shearwater Cloud Desktop UDDF export', async () => {
+    const dives = await parseDiveFile(fx('shearwater_cloud.uddf'));
+    expect(dives).toHaveLength(1);
   });
 
   it('throws UnknownDiveFormatError on unrecognised bytes', async () => {

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { XMLParser } from 'fast-xml-parser';
 import type { CanonicalDive } from '@divesend/core';
-import { toUddf } from './uddf.js';
+import { toUddf, parseUddf, UddfParseError } from './uddf.js';
 import { parseDctoolXml } from './dctoolXml.js';
 
 const FIXTURE = fileURLToPath(new URL('../../test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
@@ -81,5 +81,94 @@ describe('parseDctoolXml -> toUddf round-trips', () => {
     const bue = parse(toUddf(dive)).uddf.decomodel.buehlmann;
     expect(Number(bue.gradientfactorlow)).toBe(50);
     expect(Number(bue.gradientfactorhigh)).toBe(85);
+  });
+});
+
+const uddfText = readFileSync(
+  fileURLToPath(new URL('../../test/fixtures/shearwater_cloud.uddf', import.meta.url)),
+  'utf8',
+);
+
+describe('parseUddf', () => {
+  it('parses every dive in the file', () => {
+    const dives = parseUddf(uddfText);
+    expect(dives).toHaveLength(1);
+  });
+
+  it('maps dive 1 header fields', () => {
+    const d = parseUddf(uddfText)[0];
+    expect(d.header.startTime).toBe('2026-07-29T12:25:47Z');
+    expect(d.header.divetimeS).toBe(2196);
+    expect(d.header.maxDepthM).toBeCloseTo(4.60365868, 1);
+    expect(d.header.gfLow).toBe(50);
+    expect(d.header.gfHigh).toBe(85);
+    expect(d.header.decoModel).toBe('buhlmann');
+    expect(d.header.diveMode).toBe('oc');
+  });
+
+  it('maps dive 1 samples with unit conversions', () => {
+    const d = parseUddf(uddfText)[0];
+    expect(d.samples).toHaveLength(442);
+    expect(d.samples[0].timeS).toBe(0);
+    // temperature: UDDF Kelvin -> Celsius, all plausible
+    for (const s of d.samples) {
+      if (s.tempC != null) {
+        expect(s.tempC).toBeGreaterThan(-5);
+        expect(s.tempC).toBeLessThan(45);
+      }
+      if (s.tankPressureBar != null) {
+        expect(s.tankPressureBar).toBeGreaterThan(0);
+        expect(s.tankPressureBar).toBeLessThan(400);
+      }
+    }
+  });
+
+  it('leaves every P1 enrichment field unset', () => {
+    const d = parseUddf(uddfText)[0];
+    for (const k of [
+      'firmwareVersion',
+      'cnsStartPercent',
+      'sacVolumeLPerMin',
+      'sacPressurePsiPerMin',
+      'startLatitude',
+      'heartRateAvgBpm',
+      'waterTypeId',
+      'gasMixes',
+    ] as const) {
+      expect(d.header[k] ?? null).toBeNull();
+    }
+    for (const s of d.samples) {
+      expect(s.heartRateBpm ?? null).toBeNull();
+      expect(s.gasMixIndex ?? null).toBeNull();
+    }
+  });
+
+  it('parses a hand-written minimal 2-dive file', () => {
+    const xml = `<?xml version="1.0"?><uddf xmlns="http://www.streit.cc/uddf/3.2/" version="3.2.3">
+      <decomodel><buehlmann id="x"><gradientfactorhigh>85</gradientfactorhigh><gradientfactorlow>50</gradientfactorlow></buehlmann></decomodel>
+      <profiledata><repetitiongroup>
+        <dive id="a"><informationbeforedive><datetime>2026-01-01T10:00:00Z</datetime></informationbeforedive>
+          <informationafterdive><greatestdepth>18.0</greatestdepth><diveduration>1800</diveduration></informationafterdive>
+          <samples>
+            <waypoint><depth>0</depth><divetime>0</divetime><temperature>293.15</temperature><divemode type="opencircuit"/></waypoint>
+            <waypoint><depth>18</depth><divetime>900</divetime><temperature>288.15</temperature></waypoint>
+          </samples></dive>
+        <dive id="b"><informationbeforedive><datetime>2026-01-01T12:00:00Z</datetime></informationbeforedive>
+          <informationafterdive><greatestdepth>12.0</greatestdepth><diveduration>1200</diveduration></informationafterdive>
+          <samples><waypoint><depth>0</depth><divetime>0</divetime></waypoint></samples></dive>
+      </repetitiongroup></profiledata></uddf>`;
+    const dives = parseUddf(xml);
+    expect(dives).toHaveLength(2);
+    expect(dives[0].header.startTime).toBe('2026-01-01T10:00:00Z');
+    expect(dives[0].samples).toHaveLength(2);
+    expect(dives[0].samples[1].tempC).toBeCloseTo(288.15 - 273.15, 2);
+    expect(dives[1].header.maxDepthM).toBe(12);
+  });
+
+  it('throws UddfParseError on non-UDDF or zero-dive input', () => {
+    expect(() => parseUddf('<notuddf/>')).toThrow(UddfParseError);
+    expect(() => parseUddf('<uddf xmlns="http://www.streit.cc/uddf/3.2/"><profiledata/></uddf>')).toThrow(
+      UddfParseError,
+    );
   });
 });
