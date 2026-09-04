@@ -5,7 +5,7 @@ import { putDive } from '../db/db';
 import type { StoredDive } from '../db/Dive';
 import type { ExtraDiveDetails } from './extraDiveDetails';
 import { toOverrides } from './extraDiveDetails';
-import { buildCreatePayload, transformDive } from '@divesend/core';
+import { buildCreatePayload, computeSacPsiPerMin, transformDive } from '@divesend/core';
 import { getDivelog, saveDivelog } from './ssiClient';
 
 export class DiveSyncError extends Error {}
@@ -32,6 +32,13 @@ async function performSync(
   extraDetails: ExtraDiveDetails | undefined
 ): Promise<number> {
   const overrides = transformDive(dive.canonicalDive, dive.deviceSerialNumber ?? undefined);
+  // transformDive only emits odin_user_log_amv_psi from header.sacPressurePsiPerMin, which
+  // no format converter populates yet -- compute the pressure-based SAC rate (needs no tank
+  // size, so it works for any dive with both tank pressure readings) and send it here instead.
+  const sacPsiPerMin = computeSacPsiPerMin(dive.canonicalDive);
+  if (sacPsiPerMin !== null) {
+    overrides.odin_user_log_amv_psi = sacPsiPerMin;
+  }
   if (extraDetails) {
     Object.assign(overrides, toOverrides(extraDetails));
   }

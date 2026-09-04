@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { getDive } from '../db/db';
 import type { StoredDive } from '../db/Dive';
 import { DiveProfileChart } from '../components/DiveProfileChart';
-import { METERS_TO_FEET, BAR_TO_PSI, celsiusToFahrenheit, formatDuration } from '@divesend/core';
+import { METERS_TO_FEET, BAR_TO_PSI, celsiusToFahrenheit, formatDuration, computeSacPsiPerMin } from '@divesend/core';
 
 interface Props {
   diveId: string;
@@ -41,6 +41,7 @@ export function DiveDetailScreen({ diveId, onBack }: Props) {
   const tempSamples = samples.map((s) => s.tempC).filter((t): t is number => t != null);
   const ndlSamples = samples.map((s) => s.ndlS).filter((n): n is number => n != null);
   const hadDecoStop = samples.some((s) => (s.decoStopDepthM ?? 0) > 0);
+  const sacPsiPerMin = computeSacPsiPerMin(dive.canonicalDive);
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,6 +76,12 @@ export function DiveDetailScreen({ diveId, onBack }: Props) {
               <dd>
                 {Math.round(header.tankBeginPressureBar * BAR_TO_PSI)} &rarr; {Math.round(header.tankEndPressureBar * BAR_TO_PSI)} psi
               </dd>
+            </>
+          )}
+          {sacPsiPerMin !== null && (
+            <>
+              <dt className="text-slate-500">SAC rate</dt>
+              <dd>{sacPsiPerMin.toFixed(1)} psi/min</dd>
             </>
           )}
           <dt className="text-slate-500">Gradient factors</dt>

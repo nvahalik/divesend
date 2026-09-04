@@ -3,7 +3,11 @@ import type { Context, Next } from 'hono';
 import { getUserIdForSession, readSessionCookie } from './session';
 
 type Env = { DB: D1Database };
-export type AuthedVariables = { userId: string };
+export type AuthedVariables = {
+  userId: string;
+  ssiMode?: 'account' | 'guest';
+  bearerToken?: string;
+};
 
 export async function requireAuth(c: Context<{ Bindings: Env; Variables: AuthedVariables }>, next: Next) {
   const sessionId = readSessionCookie(c.req.header('Cookie') ?? null);
@@ -13,6 +17,32 @@ export async function requireAuth(c: Context<{ Bindings: Env; Variables: AuthedV
   }
   c.set('userId', userId);
   await next();
+}
+
+/**
+ * Auth for the SSI proxy routes, which serve both signed-in accounts and guests.
+ * A valid app session takes precedence; otherwise an `Authorization: Bearer <ssiToken>`
+ * header authorizes the request as a guest (the token is an SSI credential and only
+ * ever authorizes SSI calls for its own SSI account). Neither → 401.
+ */
+export async function sessionOrBearer(c: Context<{ Bindings: Env; Variables: AuthedVariables }>, next: Next) {
+  const sessionId = readSessionCookie(c.req.header('Cookie') ?? null);
+  const userId = sessionId ? await getUserIdForSession(c.env.DB, sessionId) : null;
+  if (userId) {
+    c.set('ssiMode', 'account');
+    c.set('userId', userId);
+    return next();
+  }
+
+  const auth = c.req.header('Authorization') ?? '';
+  const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : '';
+  if (token) {
+    c.set('ssiMode', 'guest');
+    c.set('bearerToken', token);
+    return next();
+  }
+
+  return c.json({ error: 'Not logged in.' }, 401);
 }
 
 /**

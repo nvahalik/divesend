@@ -6,6 +6,13 @@ vi.mock('../../src/ssi/client', async () => {
   return { ...actual, ssiAuthenticate: vi.fn(), ssiGetDivelog: vi.fn(), ssiGetDiveSites: vi.fn(), ssiSaveDivelog: vi.fn() };
 });
 
+vi.mock('../../src/ssi/tokenCache', async () => {
+  const actual = await vi.importActual<typeof import('../../src/ssi/tokenCache')>('../../src/ssi/tokenCache');
+  // Keep the real KV behavior; wrap only to record calls so bearer-mode tests can assert the
+  // guest path never reads the token cache.
+  return { ...actual, getCachedToken: vi.fn(actual.getCachedToken) };
+});
+
 // Workaround for a @cloudflare/vitest-pool-workers bug (cloudflare/workers-sdk#10201): when a
 // setup file imports from `cloudflare:test` (test/apply-migrations.ts does, for D1 migrations),
 // vi.mock() factories are silently ignored for modules statically imported at the top of a test
@@ -15,6 +22,7 @@ vi.resetModules();
 const { ssiAuthenticate, ssiGetDivelog, ssiGetDiveSites, ssiSaveDivelog, SSIAuthenticationError } = await import(
   '../../src/ssi/client'
 );
+const { getCachedToken } = await import('../../src/ssi/tokenCache');
 const worker = (await import('../../src/index')).default;
 
 function cookieFrom(response: Response): string {
@@ -44,7 +52,33 @@ beforeEach(() => {
   vi.mocked(ssiGetDivelog).mockReset();
   vi.mocked(ssiGetDiveSites).mockReset();
   vi.mocked(ssiSaveDivelog).mockReset();
+  vi.mocked(getCachedToken).mockClear(); // keep the real impl, just drop prior-test call records
 });
+
+/**
+ * Spies on `env.DB.prepare` for the duration of `run`, then asserts no `ssi_links` query was
+ * prepared and the KV token cache was never read -- i.e. the guest/bearer path short-circuited
+ * before any D1 or KV work. Returns whatever `run` returned.
+ */
+async function expectNoLinkLookupOrCacheRead<T>(run: () => Promise<T>): Promise<T> {
+  const prepareSpy = vi.spyOn(env.DB, 'prepare');
+  let result: T;
+  let prepared: string[];
+  let cacheWasRead: boolean;
+  // Snapshot what we need and restore the spy *before* asserting: an assertion thrown from
+  // inside `finally` would leave the `env.DB.prepare` spy installed and leak it into every
+  // later test in this file.
+  try {
+    result = await run();
+  } finally {
+    prepared = prepareSpy.mock.calls.map(([sql]) => String(sql));
+    cacheWasRead = vi.mocked(getCachedToken).mock.calls.length > 0;
+    prepareSpy.mockRestore();
+  }
+  expect(prepared.some((sql) => sql.includes('ssi_links'))).toBe(false);
+  expect(cacheWasRead).toBe(false);
+  return result;
+}
 
 describe('POST /api/ssi/link', () => {
   it('stores the link on valid SSI credentials', async () => {
@@ -207,5 +241,154 @@ describe('GET /api/ssi/sites', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([{ odin_dive_sites_id: 1 }]);
+  });
+});
+
+describe('POST /api/ssi/guest-token', () => {
+  it('returns a token on valid SSI credentials and writes nothing', async () => {
+    vi.mocked(ssiAuthenticate).mockResolvedValue('guest-ssi-token');
+
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ssiToken: 'guest-ssi-token' });
+    expect(ssiAuthenticate).toHaveBeenCalledWith('diver@ssi.example', 'ssi-pass');
+  });
+
+  it('returns 400 when a field is missing', async () => {
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example' }),
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 with the SSI message on bad SSI credentials', async () => {
+    vi.mocked(ssiAuthenticate).mockRejectedValue(new SSIAuthenticationError('Invalid password'));
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'wrong' }),
+      })
+    );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Invalid password' });
+  });
+
+  it('returns 502 when SSI is unreachable', async () => {
+    vi.mocked(ssiAuthenticate).mockRejectedValue(new Error('network down'));
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+    expect(res.status).toBe(502);
+  });
+
+  it('returns 403 without a matching Origin', async () => {
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('SSI proxy routes — guest (bearer) mode', () => {
+  it('GET /api/ssi/divelog uses the bearer token directly and reads no D1/KV', async () => {
+    vi.mocked(ssiGetDivelog).mockResolvedValue([{ odin_user_log_nr: 7 }]);
+
+    const res = await expectNoLinkLookupOrCacheRead(() =>
+      callWorker(
+        new Request('http://localhost/api/ssi/divelog', {
+          headers: { Authorization: 'Bearer raw-guest-token' },
+        })
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([{ odin_user_log_nr: 7 }]);
+    expect(ssiGetDivelog).toHaveBeenCalledWith('raw-guest-token');
+    expect(ssiAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/ssi/divelog proxies with the bearer token', async () => {
+    vi.mocked(ssiSaveDivelog).mockResolvedValue({ success: { odin_user_log_id: 5 } });
+
+    const res = await expectNoLinkLookupOrCacheRead(() =>
+      callWorker(
+        new Request('http://localhost/api/ssi/divelog', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', Authorization: 'Bearer raw-guest-token' },
+          body: JSON.stringify({ odin_user_log_nr: 3 }),
+        })
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(ssiSaveDivelog).toHaveBeenCalledWith('raw-guest-token', { odin_user_log_nr: 3 });
+  });
+
+  it('GET /api/ssi/sites works with a bearer token', async () => {
+    vi.mocked(ssiGetDiveSites).mockResolvedValue([{ odin_dive_sites_id: 2 }]);
+    const res = await expectNoLinkLookupOrCacheRead(() =>
+      callWorker(
+        new Request('http://localhost/api/ssi/sites', { headers: { Authorization: 'Bearer raw-guest-token' } })
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([{ odin_dive_sites_id: 2 }]);
+  });
+
+  it('returns 401 with neither a session nor a bearer token', async () => {
+    const res = await callWorker(new Request('http://localhost/api/ssi/divelog'));
+    expect(res.status).toBe(401);
+  });
+
+  it('session wins when both a cookie and a bearer token are present', async () => {
+    const cookie = await signupAndGetCookie('both-modes@example.com');
+    vi.mocked(ssiAuthenticate).mockResolvedValue('account-token');
+    await callWorker(
+      new Request('http://localhost/api/ssi/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: 'http://localhost' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+    vi.mocked(ssiGetDivelog).mockResolvedValue([]);
+
+    await callWorker(
+      new Request('http://localhost/api/ssi/divelog', {
+        headers: { Cookie: cookie, Authorization: 'Bearer raw-guest-token' },
+      })
+    );
+
+    expect(ssiGetDivelog).toHaveBeenLastCalledWith('account-token'); // NOT 'raw-guest-token'
+  });
+
+  it('POST /api/ssi/link still rejects a bearer token (account-only)', async () => {
+    const res = await callWorker(
+      new Request('http://localhost/api/ssi/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', Authorization: 'Bearer raw-guest-token' },
+        body: JSON.stringify({ ssiEmail: 'diver@ssi.example', ssiPassword: 'ssi-pass' }),
+      })
+    );
+    expect(res.status).toBe(401);
   });
 });

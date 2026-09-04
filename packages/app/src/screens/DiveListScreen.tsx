@@ -9,6 +9,8 @@ import { syncDive, syncAllDives } from '../ssi/diveSyncEngine';
 import type { ExtraDiveDetails } from '../ssi/extraDiveDetails';
 import { ExtraDiveDetailsModal } from '../components/ExtraDiveDetailsModal';
 import { importDiveFiles, type ImportResult } from '../import/importDiveFiles';
+import { clearGuestSsiSession, getGuestSsiSession } from '../ssi/guestSsiSession';
+import { SSIHttpError } from '../ssi/ssiClient';
 
 interface Props {
   refreshKey: number;
@@ -43,6 +45,16 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const describeSyncError = (err: unknown): string => {
+    // Only an auth/upstream failure means the guest token is actually dead. A transient
+    // network blip must not force the guest through a full SSI re-auth.
+    if (getGuestSsiSession() && err instanceof SSIHttpError && (err.status === 401 || err.status === 502)) {
+      clearGuestSsiSession();
+      return 'Your SSI session expired — reconnect on the Account screen.';
+    }
+    return err instanceof Error ? err.message : String(err);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +112,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         await syncDive(target.dive, extraDetails);
         setStatusMessage('Dive synced successfully.');
       } catch (err) {
-        setStatusMessage(`Failed to sync dive: ${err instanceof Error ? err.message : String(err)}`);
+        setStatusMessage(`Failed to sync: ${describeSyncError(err)}`);
       }
     } else {
       try {
@@ -112,7 +124,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
           setStatusMessage(`Synced ${successCount} of ${target.dives.length} dives -- ${failures.length} failed.`);
         }
       } catch (err) {
-        setStatusMessage(`Failed to sync dives: ${err instanceof Error ? err.message : String(err)}`);
+        setStatusMessage(`Failed to sync: ${describeSyncError(err)}`);
       }
     }
 
@@ -162,7 +174,11 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".fit,.xml,.uddf"
+        // Format is detected from file content, not extension, so this accept
+        // list is a hint, not a filter -- kept loose because iOS Safari's file
+        // picker can grey out (or hide entirely) extensions it doesn't
+        // recognize, like .fit/.uddf, if the list is too strict.
+        accept=".fit,.xml,.uddf,application/octet-stream,*/*"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) void handleFiles(e.target.files);
