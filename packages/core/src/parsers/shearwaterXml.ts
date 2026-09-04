@@ -16,16 +16,22 @@ import {
   FT_TO_M,
   PSI_TO_BAR,
   roundHalfToEven,
+} from '../units.js';
+import {
   divePhaseBits,
   ascentAlarmBits,
   alarmDataset,
+} from '../ssiPayload.js';
+import {
   serializeWithForcedDoubles,
   SAMPLE_DOUBLE_FIELDS,
-  type SsiSample,
-  type CanonicalDive,
-  type DiveHeader,
-  type DiveSample,
-} from '@divesend/core';
+} from '../serialize.js';
+import type { SsiSample } from '../sample.js';
+import type {
+  CanonicalDive,
+  DiveHeader,
+  DiveSample,
+} from '../types.js';
 
 // Confirmed from a real export cross-checked against its UDDF sibling.
 export const PRODUCT_CODES: Record<number, string> = {

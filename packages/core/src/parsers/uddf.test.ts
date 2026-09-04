@@ -10,10 +10,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { XMLParser } from 'fast-xml-parser';
 import type { CanonicalDive } from '@divesend/core';
-import { toUddf } from '../../src/converters/uddf.js';
-import { parseDctoolXml } from '../../src/converters/dctoolXml.js';
+import { toUddf } from './uddf.js';
+import { parseDctoolXml } from './dctoolXml.js';
 
-const FIXTURE = fileURLToPath(new URL('../fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
+const FIXTURE = fileURLToPath(new URL('../../test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
 
 const parse = (uddf: string) =>
   new XMLParser({

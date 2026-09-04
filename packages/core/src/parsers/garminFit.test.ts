@@ -23,11 +23,11 @@ import {
   type FitRecord,
   type FitTankUpdate,
   type ParsedFit,
-} from '../../src/converters/garminFit.js';
+} from './garminFit.js';
 
-const APNEA_FIXTURE = new URL('../fixtures/garmin_apnea_descent_mk2.fit', import.meta.url);
-const SCUBA_FIXTURE = new URL('../fixtures/garmin_scuba_saint_catherine.fit', import.meta.url);
-const SCUBA_UDDF = new URL('../fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url);
+const APNEA_FIXTURE = new URL('../../test/fixtures/garmin_apnea_descent_mk2.fit', import.meta.url);
+const SCUBA_FIXTURE = new URL('../../test/fixtures/garmin_scuba_saint_catherine.fit', import.meta.url);
+const SCUBA_UDDF = new URL('../../test/fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url);
 
 const apneaBytes = () => new Uint8Array(readFileSync(APNEA_FIXTURE));
 const scubaBytes = () => new Uint8Array(readFileSync(SCUBA_FIXTURE));
@@ -57,7 +57,7 @@ describe('parseFit', () => {
   });
 
   it('reading a missing file throws', () => {
-    const missing = new URL('../fixtures/does_not_exist.fit', import.meta.url);
+    const missing = new URL('../../test/fixtures/does_not_exist.fit', import.meta.url);
     expect(() => readFileSync(missing)).toThrow();
   });
 
@@ -345,7 +345,7 @@ describe('convertToSsiPayload dispatch', () => {
   });
 
   it('unknown sub_sport warns but still converts', () => {
-    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const payload = convertToSsiPayload(syntheticScuba({ subSport: 'whatever' }));
     const err = spy.mock.calls.map((c) => String(c[0])).join('');
     spy.mockRestore();

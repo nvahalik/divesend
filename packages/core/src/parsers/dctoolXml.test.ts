@@ -13,9 +13,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { parseDctoolXml, parseMmssToSeconds, parseDctoolDatetime } from '../../src/converters/dctoolXml.js';
+import { parseDctoolXml, parseMmssToSeconds, parseDctoolDatetime } from './dctoolXml.js';
 
-const FIXTURE = fileURLToPath(new URL('../fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
+const FIXTURE = fileURLToPath(new URL('../../test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
 const xml = () => readFileSync(FIXTURE, 'utf8');
 
 describe('parseMmssToSeconds', () => {

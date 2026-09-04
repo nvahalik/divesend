@@ -25,18 +25,24 @@ import {
   PSI_TO_BAR,
   SEMICIRCLE_TO_DEG,
   FIT_EPOCH_MS,
-  NDL_CAP,
   roundHalfToEven,
+} from '../units.js';
+import {
+  NDL_CAP,
   divePhaseBits,
   ascentAlarmBits,
   ALARM_FLAGS,
+} from '../ssiPayload.js';
+import {
   serializeWithForcedDoubles,
   SAMPLE_DOUBLE_FIELDS,
-  type SsiSample,
-  type CanonicalDive,
-  type DiveHeader,
-  type DiveSample,
-} from '@divesend/core';
+} from '../serialize.js';
+import type { SsiSample } from '../sample.js';
+import type {
+  CanonicalDive,
+  DiveHeader,
+  DiveSample,
+} from '../types.js';
 
 /**
  * Sample-object serializer: force the float-typed sample keys to render "6.0".
@@ -565,10 +571,7 @@ export function convertToSsiPayload(parsed: ParsedFit): Record<string, unknown> 
   const sub = parsed.subSport;
   if (sub === 'apneaDiving') return convertApnea(parsed);
   if (!SCUBA_SUB_SPORTS.has(sub)) {
-    process.stderr.write(
-      `warning: sub_sport '${sub}' is not a known scuba type; ` +
-        `attempting scuba conversion anyway\n`,
-    );
+    console.warn(`sub_sport '${sub}' is not a known scuba type; attempting scuba conversion anyway`);
   }
   return convertScuba(parsed);
 }

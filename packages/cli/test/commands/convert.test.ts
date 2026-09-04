@@ -11,10 +11,10 @@ import { XMLParser } from 'fast-xml-parser';
 import { convert, detectFormat } from '../../src/commands/convert.js';
 import { CliError } from '../../src/io.js';
 
-const SCUBA_FIT = fileURLToPath(new URL('../fixtures/garmin_scuba_saint_catherine.fit', import.meta.url));
-const APNEA_FIT = fileURLToPath(new URL('../fixtures/garmin_apnea_descent_mk2.fit', import.meta.url));
-const SW_XML = fileURLToPath(new URL('../fixtures/shearwater_cloud_min.xml', import.meta.url));
-const DC_XML = fileURLToPath(new URL('../fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
+const SCUBA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.fit', import.meta.url));
+const APNEA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_apnea_descent_mk2.fit', import.meta.url));
+const SW_XML = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_cloud_min.xml', import.meta.url));
+const DC_XML = fileURLToPath(new URL('../../../core/test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
 
 let tmp: string;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
@@ -107,7 +107,7 @@ describe('convert --to uddf', () => {
     expect(wps.length).toBeGreaterThan(50);
 
     const sibling = parseUddf(
-      readFileSync(fileURLToPath(new URL('../fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url)), 'utf8'),
+      readFileSync(fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url)), 'utf8'),
     );
     const siblingDepths: number[] = sibling.uddf.profiledata.repetitiongroup.dive.samples.waypoint.map(
       (w: Record<string, unknown>) => Number(w.depth),

@@ -40,7 +40,7 @@
 // <atmospheric>, <salinity density=> attr, <gasmix><n2>.
 
 import { XMLParser } from 'fast-xml-parser';
-import type { CanonicalDive, DiveHeader, DiveSample } from '@divesend/core';
+import type { CanonicalDive, DiveHeader, DiveSample } from '../types.js';
 
 /** Port of `_parse_mmss_to_seconds`. */
 export function parseMmssToSeconds(text: string): number {

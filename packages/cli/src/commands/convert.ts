@@ -10,14 +10,14 @@ import {
   parseFit,
   convertToSsiPayload as fitToSsi,
   toCanonicalDive as fitToCanonical,
-} from '../converters/garminFit.js';
+} from '@divesend/core/parsers/garminFit';
 import {
   parseShearwaterXml,
   convertToSsiPayload as swToSsi,
   toCanonicalDive as swToCanonical,
-} from '../converters/shearwaterXml.js';
-import { parseDctoolXml } from '../converters/dctoolXml.js';
-import { toUddf } from '../converters/uddf.js';
+} from '@divesend/core/parsers/shearwaterXml';
+import { parseDctoolXml } from '@divesend/core/parsers/dctoolXml';
+import { toUddf } from '@divesend/core/parsers/uddf';
 import { ssiDateFields } from '../dateFields.js';
 
 export type Format = 'fit' | 'sw-xml' | 'dc-xml';

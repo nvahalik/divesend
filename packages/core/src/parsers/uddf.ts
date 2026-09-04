@@ -9,7 +9,8 @@
 //
 // `BAR_TO_PA` / `KELVIN_OFFSET` come from `@divesend/core`.
 
-import { BAR_TO_PA, KELVIN_OFFSET, roundHalfToEven, type CanonicalDive } from '@divesend/core';
+import { BAR_TO_PA, KELVIN_OFFSET, roundHalfToEven } from '../units.js';
+import type { CanonicalDive } from '../types.js';
 
 const UDDF_NS = 'http://www.streit.cc/uddf/3.2/';
 

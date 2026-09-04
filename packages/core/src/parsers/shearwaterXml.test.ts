@@ -20,9 +20,9 @@ import {
   parseShearwaterXml,
   convertToSsiPayload,
   buildSamples,
-} from '../../src/converters/shearwaterXml.js';
+} from './shearwaterXml.js';
 
-const FIXTURE = fileURLToPath(new URL('../fixtures/shearwater_cloud_min.xml', import.meta.url));
+const FIXTURE = fileURLToPath(new URL('../../test/fixtures/shearwater_cloud_min.xml', import.meta.url));
 const xml = () => readFileSync(FIXTURE, 'utf8');
 
 const DIVE = 0x08000000;
