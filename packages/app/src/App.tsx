@@ -5,6 +5,8 @@ import { DiveListScreen } from './screens/DiveListScreen';
 import { DiveDetailScreen } from './screens/DiveDetailScreen';
 import { AccountsScreen } from './screens/AccountsScreen';
 import { AuthForm } from './components/AuthForm';
+import { BluetoothUnsupportedNotice } from './components/BluetoothUnsupportedNotice';
+import { isWebBluetoothSupported } from './lib/webBluetooth';
 import { resolveSession, enableGuestMode, type CurrentUser } from './auth/session';
 
 type Screen = { name: 'list' } | { name: 'connect' } | { name: 'detail'; diveId: string } | { name: 'account' };
@@ -50,6 +52,7 @@ export function App() {
           Continue without an account
         </button>
         {guestModeError && <p className="text-sm text-red-600">{guestModeError}</p>}
+        {!isWebBluetoothSupported() && <BluetoothUnsupportedNotice />}
       </div>
     );
   }

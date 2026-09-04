@@ -17,6 +17,8 @@ import {
 import { toStoredDive } from '../db/Dive';
 import { putDive } from '../db/db';
 import { readLocalStorage, writeLocalStorage } from '../lib/storage';
+import { isWebBluetoothSupported } from '../lib/webBluetooth';
+import { BluetoothUnsupportedNotice } from '../components/BluetoothUnsupportedNotice';
 import type { CanonicalDive } from '@divesend/core';
 
 interface Props {
@@ -154,12 +156,15 @@ export function ConnectScreen({ onDivesImported }: Props) {
     }
   }, [appendLog, onDivesImported]);
 
+  const bluetoothSupported = isWebBluetoothSupported();
+
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-bold">Connect</h1>
+      {!bluetoothSupported && <BluetoothUnsupportedNotice />}
       <button
         onClick={() => void connect()}
-        disabled={connecting}
+        disabled={connecting || !bluetoothSupported}
         className="flex w-fit items-center gap-2 rounded-lg bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
       >
         {connecting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
