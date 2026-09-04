@@ -85,7 +85,7 @@ function render(from: DiveFileFormat, to: Target, buf: Buffer): string {
   }
 
   if (from === 'uddf') {
-    const dives = parseUddf(new TextDecoder().decode(buf));
+    const dives = parseUddf(new TextDecoder().decode(buf)).map(({ dive }) => dive);
     if (to === 'uddf') return dives.map(toUddf).join('\n');
 
     const payloads = dives.map((dive) => {
