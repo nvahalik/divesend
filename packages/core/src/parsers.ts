@@ -4,6 +4,11 @@ import { parseShearwaterXml, toCanonicalDive as shearwaterToCanonicalDive } from
 import { parseDctoolXml } from './parsers/dctoolXml.js';
 import { parseUddf } from './parsers/uddf.js';
 
+export interface ImportedDive {
+  dive: CanonicalDive;
+  deviceSerial: string | null;
+}
+
 export { detectFormat, type DiveFileFormat } from './parsers/detectFormat.js';
 export {
   parseShearwaterXml,
@@ -28,19 +33,26 @@ export class UnknownDiveFormatError extends Error {
 export async function parseDiveFile(
   bytes: Uint8Array,
   formatHint?: DiveFileFormat,
-): Promise<CanonicalDive[]> {
+): Promise<ImportedDive[]> {
   const fmt = formatHint ?? detectFormat(bytes);
   if (!fmt) throw new UnknownDiveFormatError();
 
   if (fmt === 'fit') {
     const { parseFit, toCanonicalDive } = await import('./parsers/garminFit.js');
-    return [toCanonicalDive(parseFit(bytes))];
+    const parsed = parseFit(bytes);
+    return [{
+      dive: toCanonicalDive(parsed),
+      deviceSerial: parsed.device.serialNumber != null ? String(parsed.device.serialNumber) : null,
+    }];
   }
 
   const text = new TextDecoder().decode(bytes);
   if (fmt === 'uddf') return parseUddf(text);
-  if (fmt === 'sw-xml') return [shearwaterToCanonicalDive(parseShearwaterXml(text))];
-  if (fmt === 'dc-xml') return [parseDctoolXml(text)];
+  if (fmt === 'sw-xml') {
+    const parsed = parseShearwaterXml(text);
+    return [{ dive: shearwaterToCanonicalDive(parsed), deviceSerial: parsed.header.computerSerial }];
+  }
+  if (fmt === 'dc-xml') return [{ dive: parseDctoolXml(text), deviceSerial: null }];
 
   throw new UnknownDiveFormatError();
 }
