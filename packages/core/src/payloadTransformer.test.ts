@@ -89,4 +89,86 @@ describe('transformDive', () => {
     const rawDepthDataset = payload.odin_user_log_depthDataset as string;
     expect(rawDepthDataset).toBe('[10.0]');
   });
+
+  it('golden: header-only dive output is stable', () => {
+    expect(transformDive(makeDive())).toMatchInlineSnapshot(`
+      {
+        "odin_user_log_alarmDataset": "[]",
+        "odin_user_log_avg_depth_ft": 0,
+        "odin_user_log_avg_depth_m": 0,
+        "odin_user_log_date": "2026-07-28",
+        "odin_user_log_datetime": "2026-07-28 07:26",
+        "odin_user_log_depthDataset": "[]",
+        "odin_user_log_depth_ft": 32.8,
+        "odin_user_log_depth_m": 10,
+        "odin_user_log_diveComputer": "",
+        "odin_user_log_diveSamples": "[]",
+        "odin_user_log_divecomputer_dive_ref": "2026-07-28T12:26:00.000Z_0",
+        "odin_user_log_divecomputer_imported": true,
+        "odin_user_log_divecomputer_manufacturer": "Shearwater",
+        "odin_user_log_divecomputer_name": "Teric",
+        "odin_user_log_divecomputer_ref": "Teric",
+        "odin_user_log_divetime": 10,
+        "odin_user_log_ean": 0,
+        "odin_user_log_ean_percent": 0,
+        "odin_user_log_entry_time": "07:26",
+        "odin_user_log_gfSurfDataset": "[]",
+        "odin_user_log_gf_set": "50 / 85",
+        "odin_user_log_gf_set_1": 50,
+        "odin_user_log_gf_set_2": 85,
+        "odin_user_log_gfnowDataset": "[]",
+        "odin_user_log_pressure_end_bar": 100,
+        "odin_user_log_pressure_end_psi": 1450.4,
+        "odin_user_log_pressure_start_bar": 200,
+        "odin_user_log_pressure_start_psi": 2900.8,
+        "odin_user_log_tempDataset": "[]",
+      }
+    `);
+  });
+
+  it('golden: dive-with-samples output is stable', () => {
+    const dive = makeDive({}, [
+      { timeS: 0, depthM: 0, tempC: 24, ndlS: 5940, tankPressureBar: 200, decoStopDepthM: null, ttsS: null },
+      { timeS: 30, depthM: 12.5, tempC: 22.1, ndlS: 3600, tankPressureBar: 190, decoStopDepthM: null, ttsS: null },
+      { timeS: 60, depthM: 18, tempC: 21, ndlS: 1200, tankPressureBar: 182, decoStopDepthM: 3, ttsS: 300 },
+    ]);
+    expect(transformDive(dive)).toMatchInlineSnapshot(`
+      {
+        "odin_user_log_alarmDataset": "[]",
+        "odin_user_log_avg_depth_ft": 33.4,
+        "odin_user_log_avg_depth_m": 10.2,
+        "odin_user_log_date": "2026-07-28",
+        "odin_user_log_datetime": "2026-07-28 07:26",
+        "odin_user_log_depthDataset": "[0.0,12.5,18.0]",
+        "odin_user_log_depth_ft": 32.8,
+        "odin_user_log_depth_m": 10,
+        "odin_user_log_diveComputer": "",
+        "odin_user_log_diveSamples": "[{"n":1,"t":0,"d":0.0,"s":0.0,"te":24.0,"ndl":99,"gs":0.0,"gn":0.0,"a":0,"mf":201326592,"o":false,"dr":false,"rv":3.0,"pressure":200.0},{"n":2,"t":30000,"d":12.5,"s":-25.0,"te":22.1,"ndl":60,"gs":0.0,"gn":0.0,"a":0,"mf":134217728,"o":false,"dr":false,"rv":3.0,"pressure":190.0},{"n":3,"t":60000,"d":18.0,"s":-11.0,"te":21.0,"ndl":20,"gs":0.0,"gn":0.0,"a":0,"mf":134217728,"o":false,"dr":true,"rv":3.0,"pressure":182.0}]",
+        "odin_user_log_divecomputer_dive_ref": "2026-07-28T12:26:00.000Z_0",
+        "odin_user_log_divecomputer_imported": true,
+        "odin_user_log_divecomputer_manufacturer": "Shearwater",
+        "odin_user_log_divecomputer_name": "Teric",
+        "odin_user_log_divecomputer_ref": "Teric",
+        "odin_user_log_divetime": 10,
+        "odin_user_log_ean": 0,
+        "odin_user_log_ean_percent": 0,
+        "odin_user_log_entry_time": "07:26",
+        "odin_user_log_gfSurfDataset": "[0.0,0.0,0.0]",
+        "odin_user_log_gf_set": "50 / 85",
+        "odin_user_log_gf_set_1": 50,
+        "odin_user_log_gf_set_2": 85,
+        "odin_user_log_gfnowDataset": "[0.0,0.0,0.0]",
+        "odin_user_log_pressure_end_bar": 100,
+        "odin_user_log_pressure_end_psi": 1450.4,
+        "odin_user_log_pressure_start_bar": 200,
+        "odin_user_log_pressure_start_psi": 2900.8,
+        "odin_user_log_tankPressureDataset": "[200.0,190.0,182.0]",
+        "odin_user_log_tempDataset": "[24.0,22.1,21.0]",
+        "odin_user_log_watertemp_c": 21,
+        "odin_user_log_watertemp_f": 69.8,
+        "odin_user_log_watertemp_max_c": 24,
+        "odin_user_log_watertemp_max_f": 75.2,
+      }
+    `);
+  });
 });
