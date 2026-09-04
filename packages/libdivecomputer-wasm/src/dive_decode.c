@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <libdivecomputer/parser.h>
 #include <libdivecomputer/device.h>
@@ -202,9 +203,36 @@ webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_dev
 	cJSON *header = cJSON_CreateObject ();
 	cJSON_AddItemToObject (root, "header", header);
 
+	// dt.{year..second} is the dive computer's wall-clock reading. For most
+	// devices dt.timezone is DC_TIMEZONE_NONE (no known relationship to UTC,
+	// and the field is trusted as-is -- existing behavior, unchanged below).
+	// A handful of devices (Divesoft Freedom, Deep6 Excursion, Halcyon
+	// Symbios, Dive System iDive) report the *diver-configured* UTC offset
+	// in dt.timezone; for those, the wall-clock fields are local time, not
+	// UTC, and must be shifted before we're allowed to call it "Z". Mirrors
+	// libdivecomputer's own dc_datetime_localtime (datetime.c): treat the
+	// fields as UTC first via timegm, then subtract the device's offset to
+	// land on true UTC. Skip this (or get the sign backwards) and every
+	// dive from a timezone-aware device is mislabeled by exactly that
+	// offset once downstream code takes the trailing "Z" at face value.
+	struct tm tm = {0};
+	tm.tm_year = dt.year - 1900;
+	tm.tm_mon = dt.month - 1;
+	tm.tm_mday = dt.day;
+	tm.tm_hour = dt.hour;
+	tm.tm_min = dt.minute;
+	tm.tm_sec = dt.second;
+	time_t utc_ticks = timegm (&tm);
+	if (dt.timezone != DC_TIMEZONE_NONE) {
+		utc_ticks -= dt.timezone;
+	}
+	struct tm utc_tm;
+	gmtime_r (&utc_ticks, &utc_tm);
+
 	char start_time[32];
 	snprintf (start_time, sizeof (start_time), "%04d-%02d-%02dT%02d:%02d:%02dZ",
-		dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+		utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday,
+		utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
 	cJSON_AddStringToObject (header, "startTime", start_time);
 	cJSON_AddNumberToObject (header, "maxDepthM", maxdepth);
 	cJSON_AddNumberToObject (header, "gasO2Percent", gasmix.oxygen * 100.0);

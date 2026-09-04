@@ -1,14 +1,18 @@
 // app/src/screens/DiveListScreen.tsx
 import { useEffect, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
-import { getAllDives } from '../db/db';
+import { getAllDives, setDiveHidden } from '../db/db';
 import type { StoredDive } from '../db/Dive';
+import { filterDives, DEFAULT_DIVE_LIST_FILTERS } from './diveListFilters';
+import type { DiveListFilters, DiveTypeFilter, WaterTypeFilter, SyncStatusFilter } from './diveListFilters';
 import { DiveProfileSparkline } from '../components/DiveProfileSparkline';
 import { METERS_TO_FEET, formatDuration } from '@divesend/core';
 import { syncDive, syncAllDives } from '../ssi/diveSyncEngine';
 import type { ExtraDiveDetails } from '../ssi/extraDiveDetails';
 import { ExtraDiveDetailsModal } from '../components/ExtraDiveDetailsModal';
 import { importDiveFiles, type ImportResult } from '../import/importDiveFiles';
+import { clearGuestSsiSession, getGuestSsiSession } from '../ssi/guestSsiSession';
+import { SSIHttpError } from '../ssi/ssiClient';
 
 interface Props {
   refreshKey: number;
@@ -42,7 +46,18 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
   const [dragActive, setDragActive] = useState(false);
+  const [filters, setFilters] = useState<DiveListFilters>(DEFAULT_DIVE_LIST_FILTERS);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const describeSyncError = (err: unknown): string => {
+    // Only an auth/upstream failure means the guest token is actually dead. A transient
+    // network blip must not force the guest through a full SSI re-auth.
+    if (getGuestSsiSession() && err instanceof SSIHttpError && (err.status === 401 || err.status === 502)) {
+      clearGuestSsiSession();
+      return 'Your SSI session expired — reconnect on the Account screen.';
+    }
+    return err instanceof Error ? err.message : String(err);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +70,11 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   }, [refreshKey, localRefreshKey]);
 
   const refresh = () => setLocalRefreshKey((k) => k + 1);
+
+  const toggleHidden = async (dive: StoredDive) => {
+    await setDiveHidden(dive.id, !dive.hidden);
+    refresh();
+  };
 
   const toggleSelectionMode = () => {
     setSelectionMode((mode) => !mode);
@@ -100,7 +120,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         await syncDive(target.dive, extraDetails);
         setStatusMessage('Dive synced successfully.');
       } catch (err) {
-        setStatusMessage(`Failed to sync dive: ${err instanceof Error ? err.message : String(err)}`);
+        setStatusMessage(`Failed to sync: ${describeSyncError(err)}`);
       }
     } else {
       try {
@@ -112,7 +132,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
           setStatusMessage(`Synced ${successCount} of ${target.dives.length} dives -- ${failures.length} failed.`);
         }
       } catch (err) {
-        setStatusMessage(`Failed to sync dives: ${err instanceof Error ? err.message : String(err)}`);
+        setStatusMessage(`Failed to sync: ${describeSyncError(err)}`);
       }
     }
 
@@ -155,6 +175,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   }
 
   const selectedNotSyncedCount = dives.filter((d) => selectedIds.has(d.id) && d.syncState === 'notSynced').length;
+  const visibleDives = filterDives(dives, filters);
 
   return (
     <div className="flex flex-col gap-4" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
@@ -162,7 +183,11 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".fit,.xml,.uddf"
+        // Format is detected from file content, not extension, so this accept
+        // list is a hint, not a filter -- kept loose because iOS Safari's file
+        // picker can grey out (or hide entirely) extensions it doesn't
+        // recognize, like .fit/.uddf, if the list is too strict.
+        accept=".fit,.xml,.uddf,application/octet-stream,*/*"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) void handleFiles(e.target.files);
@@ -209,6 +234,55 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-1.5">
+          <span className="text-slate-500">Type</span>
+          <select
+            value={filters.diveType}
+            onChange={(e) => setFilters((f) => ({ ...f, diveType: e.target.value as DiveTypeFilter }))}
+            className="rounded-lg border border-slate-300 px-2 py-1"
+          >
+            <option value="all">All</option>
+            <option value="scuba">Scuba</option>
+            <option value="freedive">Freedive</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5">
+          <span className="text-slate-500">Water</span>
+          <select
+            value={filters.waterType}
+            onChange={(e) => setFilters((f) => ({ ...f, waterType: e.target.value as WaterTypeFilter }))}
+            className="rounded-lg border border-slate-300 px-2 py-1"
+          >
+            <option value="all">All</option>
+            <option value="fresh">Fresh</option>
+            <option value="salt">Salt</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5">
+          <span className="text-slate-500">Sync</span>
+          <select
+            value={filters.syncStatus}
+            onChange={(e) => setFilters((f) => ({ ...f, syncStatus: e.target.value as SyncStatusFilter }))}
+            className="rounded-lg border border-slate-300 px-2 py-1"
+          >
+            <option value="all">All</option>
+            <option value="synced">Synced</option>
+            <option value="unsynced">Unsynced</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={filters.showHidden}
+            onChange={(e) => setFilters((f) => ({ ...f, showHidden: e.target.checked }))}
+            className="h-4 w-4"
+          />
+          <span className="text-slate-500">Show hidden</span>
+        </label>
+      </div>
+
       {statusMessage && (
         <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{statusMessage}</p>
       )}
@@ -217,13 +291,15 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
         <p className="text-center text-slate-500">
           No dives yet. Connect your dive computer, or drop / import dive files, to get started.
         </p>
+      ) : visibleDives.length === 0 ? (
+        <p className="text-center text-slate-500">No dives match the current filters.</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {dives.map((dive) => (
+          {visibleDives.map((dive) => (
             <li
               key={dive.id}
               onClick={() => (selectionMode ? toggleSelected(dive.id) : onSelectDive(dive.id))}
-              className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-slate-300"
+              className={`flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-slate-300 ${dive.hidden ? 'opacity-60' : ''}`}
             >
               {selectionMode && (
                 <input
@@ -234,6 +310,7 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
                 />
               )}
               <div className="flex-1">
+                  {new Date(dive.date).toJSON()}
                 <div className="font-semibold">{new Date(dive.date).toLocaleString()}</div>
                 <div className="text-sm text-slate-500">
                   {Math.round(dive.maxDepthM * METERS_TO_FEET)}ft &middot; {formatDuration(dive.canonicalDive.header.divetimeS)}
@@ -252,6 +329,18 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
                   className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Send
+                </button>
+              )}
+              {!selectionMode && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void toggleHidden(dive);
+                  }}
+                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50"
+                >
+                  {dive.hidden ? 'Unhide' : 'Hide'}
                 </button>
               )}
             </li>

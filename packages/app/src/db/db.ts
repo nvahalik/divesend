@@ -44,6 +44,14 @@ export async function getDive(id: string): Promise<StoredDive | undefined> {
   return db.get('dives', id);
 }
 
+/** Sets (or clears) a dive's `hidden` flag and persists the change. No-op if the dive doesn't exist. */
+export async function setDiveHidden(id: string, hidden: boolean): Promise<void> {
+  const dive = await getDive(id);
+  if (!dive) return;
+  dive.hidden = hidden;
+  await putDive(dive);
+}
+
 /**
  * Closes the current connection (if any) and clears the cached promise so a
  * subsequent call re-opens a fresh connection. Mainly useful in tests, where

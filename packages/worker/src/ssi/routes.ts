@@ -1,7 +1,7 @@
 // worker/src/ssi/routes.ts
 import type { Context } from 'hono';
 import { Hono } from 'hono';
-import { requireAuth, requireMatchingOrigin, type AuthedVariables } from '../auth/middleware';
+import { requireAuth, requireMatchingOrigin, sessionOrBearer, type AuthedVariables } from '../auth/middleware';
 import { decryptSecret, encryptSecret } from './crypto';
 import { clearCachedToken, getCachedToken, setCachedToken } from './tokenCache';
 import {
@@ -18,11 +18,28 @@ type SsiContext = Context<{ Bindings: Env; Variables: AuthedVariables }>;
 
 export const ssiRoutes = new Hono<{ Bindings: Env; Variables: AuthedVariables }>();
 
-ssiRoutes.use('*', requireAuth);
-
 const UPSTREAM_UNAVAILABLE = { error: 'Could not reach SSI right now. Try again shortly.' } as const;
 
-ssiRoutes.post('/link', requireMatchingOrigin, async (c) => {
+ssiRoutes.post('/guest-token', requireMatchingOrigin, async (c) => {
+  const body = await c.req.json<{ ssiEmail?: string; ssiPassword?: string }>();
+  const ssiEmail = body.ssiEmail?.trim();
+  const ssiPassword = body.ssiPassword;
+  if (!ssiEmail || !ssiPassword) {
+    return c.json({ error: 'SSI email and password are required.' }, 400);
+  }
+
+  try {
+    const ssiToken = await ssiAuthenticate(ssiEmail, ssiPassword);
+    return c.json({ ssiToken });
+  } catch (err) {
+    if (err instanceof SSIAuthenticationError) {
+      return c.json({ error: err.message }, 401);
+    }
+    return c.json(UPSTREAM_UNAVAILABLE, 502);
+  }
+});
+
+ssiRoutes.post('/link', requireAuth, requireMatchingOrigin, async (c) => {
   const body = await c.req.json<{ ssiEmail?: string; ssiPassword?: string }>();
   const ssiEmail = body.ssiEmail?.trim();
   const ssiPassword = body.ssiPassword;
@@ -55,7 +72,7 @@ ssiRoutes.post('/link', requireMatchingOrigin, async (c) => {
   return c.json({ ssiEmail });
 });
 
-ssiRoutes.delete('/link', requireMatchingOrigin, async (c) => {
+ssiRoutes.delete('/link', requireAuth, requireMatchingOrigin, async (c) => {
   const userId = c.get('userId');
   await c.env.DB.prepare('DELETE FROM ssi_links WHERE user_id = ?').bind(userId).run();
   await clearCachedToken(c.env.SSI_TOKEN_CACHE, userId);
@@ -64,6 +81,10 @@ ssiRoutes.delete('/link', requireMatchingOrigin, async (c) => {
 
 /** Resolves a usable SSI token for the current user (cached, or freshly derived), or a Response to return as-is on failure. */
 async function requireSsiToken(c: SsiContext): Promise<string | Response> {
+  if (c.get('ssiMode') === 'guest') {
+    return c.get('bearerToken') as string;
+  }
+
   const userId = c.get('userId');
   const cached = await getCachedToken(c.env.SSI_TOKEN_CACHE, userId);
   if (cached) return cached;
@@ -94,7 +115,6 @@ async function requireSsiToken(c: SsiContext): Promise<string | Response> {
  * even within its own TTL window if the user changed their SSI password elsewhere.
  */
 async function callWithFreshTokenRetry<T>(c: SsiContext, fn: (token: string) => Promise<T>): Promise<T | Response> {
-  const userId = c.get('userId');
   const first = await requireSsiToken(c);
   if (first instanceof Response) return first;
 
@@ -102,14 +122,16 @@ async function callWithFreshTokenRetry<T>(c: SsiContext, fn: (token: string) => 
     return await fn(first);
   } catch (err) {
     if (!(err instanceof SSIUpstreamError)) throw err;
-    await clearCachedToken(c.env.SSI_TOKEN_CACHE, userId);
+    if (c.get('ssiMode') !== 'guest') {
+      await clearCachedToken(c.env.SSI_TOKEN_CACHE, c.get('userId'));
+    }
     const second = await requireSsiToken(c);
     if (second instanceof Response) return second;
     return fn(second);
   }
 }
 
-ssiRoutes.get('/divelog', async (c) => {
+ssiRoutes.get('/divelog', sessionOrBearer, async (c) => {
   try {
     const result = await callWithFreshTokenRetry(c, ssiGetDivelog);
     return result instanceof Response ? result : c.json(result);
@@ -118,7 +140,7 @@ ssiRoutes.get('/divelog', async (c) => {
   }
 });
 
-ssiRoutes.get('/sites', async (c) => {
+ssiRoutes.get('/sites', sessionOrBearer, async (c) => {
   try {
     const result = await callWithFreshTokenRetry(c, ssiGetDiveSites);
     return result instanceof Response ? result : c.json(result);
@@ -127,7 +149,7 @@ ssiRoutes.get('/sites', async (c) => {
   }
 });
 
-ssiRoutes.post('/divelog', requireMatchingOrigin, async (c) => {
+ssiRoutes.post('/divelog', sessionOrBearer, requireMatchingOrigin, async (c) => {
   const payload = await c.req.json<Record<string, unknown>>();
   try {
     const result = await callWithFreshTokenRetry(c, (token) => ssiSaveDivelog(token, payload));

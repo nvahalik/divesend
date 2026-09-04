@@ -90,6 +90,28 @@ describe('syncDive', () => {
     expect(vi.mocked(saveDivelog).mock.calls[0][0].odin_user_log_var_divetype_id).toBe(24);
   });
 
+  it('sends a computed SAC rate when both tank pressures are present', async () => {
+    vi.mocked(getDivelog).mockResolvedValue([]);
+    vi.mocked(saveDivelog).mockResolvedValue({ success: { odin_user_log_id: 1 } });
+
+    await syncDive(makeDive()); // makeCanonicalDive: 130.59 -> 103.01 bar over 600s, no samples (surface avg)
+
+    const payload = vi.mocked(saveDivelog).mock.calls[0][0];
+    expect(payload.odin_user_log_amv_psi).toBeCloseTo(((130.59 - 103.01) / 10 / 1) * 14.5038, 1);
+  });
+
+  it('omits the SAC rate when a tank pressure reading is missing', async () => {
+    vi.mocked(getDivelog).mockResolvedValue([]);
+    vi.mocked(saveDivelog).mockResolvedValue({ success: { odin_user_log_id: 1 } });
+
+    const dive = makeDive();
+    dive.canonicalDive.header.tankEndPressureBar = null;
+    await syncDive(dive);
+
+    // buildCreatePayload defaults every omitted schema key to null.
+    expect(vi.mocked(saveDivelog).mock.calls[0][0].odin_user_log_amv_psi).toBeNull();
+  });
+
   it('throws and leaves the dive not-synced when the response has no ssi dive id', async () => {
     vi.mocked(getDivelog).mockResolvedValue([]);
     vi.mocked(saveDivelog).mockResolvedValue({ error: 'something went wrong' });

@@ -26,3 +26,6 @@ public/libdivecomputer.wasm
 *.njsproj
 *.sln
 *.sw?
+
+public/divesend-dev-cert.pem
+public/sample-dives/

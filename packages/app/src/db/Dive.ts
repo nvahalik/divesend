@@ -15,6 +15,8 @@ export interface StoredDive {
   ssiDiveID: number | null;
   /** The account's sequential dive number (`odin_user_log_nr`), what SSI's own app labels a dive with. */
   ssiDiveNumber: number | null;
+  /** User-hidden from the dive list. Undefined/false means visible -- no migration needed for existing dives. */
+  hidden?: boolean;
 }
 
 /**

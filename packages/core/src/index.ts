@@ -6,3 +6,4 @@ export * from './writeSchema.js';
 export * from './payloadTransformer.js';
 export * from './enumValues.js';
 export * from './ssiPayload.js';
+export * from './sac.js';
