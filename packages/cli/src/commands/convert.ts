@@ -17,13 +17,13 @@ import {
   toCanonicalDive as swToCanonical,
 } from '@divesend/core/parsers/shearwaterXml';
 import { parseDctoolXml } from '@divesend/core/parsers/dctoolXml';
-import { toUddf } from '@divesend/core/parsers/uddf';
+import { toUddf, parseUddf } from '@divesend/core/parsers/uddf';
 import { detectFormat, type DiveFileFormat } from '@divesend/core/parsers/detectFormat';
 import { ssiDateFields } from '../dateFields.js';
 
 export type Target = 'ssi' | 'uddf';
 
-const FORMATS: readonly DiveFileFormat[] = ['fit', 'sw-xml', 'dc-xml'];
+const FORMATS: readonly DiveFileFormat[] = ['fit', 'sw-xml', 'dc-xml', 'uddf'];
 const TARGETS: readonly Target[] = ['ssi', 'uddf'];
 
 export interface ConvertOptions {
@@ -53,7 +53,7 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
     fail(`Unknown --to "${options.to}". Expected "ssi" or "uddf".`);
   }
   if (options.from != null && !FORMATS.includes(options.from as DiveFileFormat)) {
-    fail(`Unknown --from "${options.from}". Expected "fit", "sw-xml", or "dc-xml".`);
+    fail(`Unknown --from "${options.from}". Expected "fit", "sw-xml", "dc-xml", or "uddf".`);
   }
 
   const bytes = await readInput(file);
@@ -64,7 +64,7 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
 
   const from = (options.from as DiveFileFormat | undefined) ?? detectFormat(buf) ?? undefined;
   if (!from) {
-    fail('Could not detect the input format. Pass --from with "fit", "sw-xml", or "dc-xml".');
+    fail('Could not detect the input format. Pass --from with "fit", "sw-xml", "dc-xml", or "uddf".');
   }
 
   writeOutput(render(from, to, buf), options.output);
@@ -82,6 +82,25 @@ function render(from: DiveFileFormat, to: Target, buf: Buffer): string {
   if (from === 'sw-xml') {
     const parsed = parseShearwaterXml(buf.toString('utf8'));
     return to === 'uddf' ? toUddf(swToCanonical(parsed)) : json(swToSsi(parsed));
+  }
+
+  if (from === 'uddf') {
+    const dives = parseUddf(new TextDecoder().decode(buf));
+    if (to === 'uddf') return dives.map(toUddf).join('\n');
+
+    const payloads = dives.map((dive) => {
+      const payload = transformDive(dive);
+      // Same rationale as the dc-xml branch below: recompute these
+      // deterministically from the dive's own UTC-offset startTime instead
+      // of core's host-timezone-dependent Date getters.
+      const df = ssiDateFields(dive.header.startTime);
+      payload.odin_user_log_datetime = df.datetime;
+      payload.odin_user_log_date = df.date;
+      payload.odin_user_log_entry_time = df.entry_time;
+      payload.odin_user_log_divecomputer_dive_ref = df.dive_ref;
+      return payload;
+    });
+    return json(payloads.length === 1 ? payloads[0] : payloads);
   }
 
   // dc-xml

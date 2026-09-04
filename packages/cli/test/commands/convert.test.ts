@@ -17,6 +17,7 @@ const APNEA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_apne
 const SW_XML = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_cloud_min.xml', import.meta.url));
 const DC_XML = fileURLToPath(new URL('../../../core/test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
 const UDDF_FIXTURE = fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url));
+const UDDF = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_cloud.uddf', import.meta.url));
 
 let tmp: string;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
@@ -136,6 +137,78 @@ describe('convert --to uddf', () => {
   });
 });
 
+describe('convert --from uddf', () => {
+  // shearwater_cloud.uddf has exactly one dive, so — matching every other
+  // format's behaviour when there is exactly one dive — the SSI output is a
+  // single JSON object, not a length-1 array.
+  it('detects uddf and converts the single dive to an SSI JSON object', async () => {
+    await convert(UDDF, {});
+    const out = stdoutJson();
+    expect(Array.isArray(out)).toBe(false);
+    expect(out).toHaveProperty('odin_user_log_datetime');
+    expect(out.odin_user_log_datetime).toBe('2026-07-29 12:25');
+  });
+
+  it('round-trips uddf -> uddf', async () => {
+    await convert(UDDF, { to: 'uddf' });
+    const out = stdoutText();
+    expect(out).toContain('<uddf');
+    expect(out.split('<uddf').length - 1).toBe(1); // one dive, one doc
+  });
+
+  it('accepts an explicit --from uddf', async () => {
+    await convert(UDDF, { from: 'uddf' });
+    const out = stdoutJson();
+    expect(Array.isArray(out)).toBe(false);
+    expect(out).toHaveProperty('odin_user_log_datetime');
+  });
+
+  it('converts a multi-dive uddf file to an SSI JSON array', async () => {
+    const twoDives = join(tmp, 'two.uddf');
+    writeFileSync(
+      twoDives,
+      `<?xml version="1.0"?><uddf xmlns="http://www.streit.cc/uddf/3.2/" version="3.2.3">
+        <decomodel><buehlmann id="x"><gradientfactorhigh>85</gradientfactorhigh><gradientfactorlow>50</gradientfactorlow></buehlmann></decomodel>
+        <profiledata><repetitiongroup>
+          <dive id="a"><informationbeforedive><datetime>2026-01-01T10:00:00Z</datetime></informationbeforedive>
+            <informationafterdive><greatestdepth>18.0</greatestdepth><diveduration>1800</diveduration></informationafterdive>
+            <samples>
+              <waypoint><depth>0</depth><divetime>0</divetime><temperature>293.15</temperature><divemode type="opencircuit"/></waypoint>
+              <waypoint><depth>18</depth><divetime>900</divetime><temperature>288.15</temperature></waypoint>
+            </samples></dive>
+          <dive id="b"><informationbeforedive><datetime>2026-01-01T12:00:00Z</datetime></informationbeforedive>
+            <informationafterdive><greatestdepth>12.0</greatestdepth><diveduration>1200</diveduration></informationafterdive>
+            <samples><waypoint><depth>0</depth><divetime>0</divetime></waypoint></samples></dive>
+        </repetitiongroup></profiledata></uddf>`,
+    );
+    await convert(twoDives, { from: 'uddf' });
+    const out = stdoutJson();
+    expect(Array.isArray(out)).toBe(true);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toHaveProperty('odin_user_log_datetime');
+    expect(out[1]).toHaveProperty('odin_user_log_datetime');
+  });
+
+  it('round-trips a multi-dive uddf file to one <uddf> doc per dive', async () => {
+    const twoDives = join(tmp, 'two-out.uddf');
+    writeFileSync(
+      twoDives,
+      `<?xml version="1.0"?><uddf xmlns="http://www.streit.cc/uddf/3.2/" version="3.2.3">
+        <profiledata><repetitiongroup>
+          <dive id="a"><informationbeforedive><datetime>2026-01-01T10:00:00Z</datetime></informationbeforedive>
+            <informationafterdive><greatestdepth>18.0</greatestdepth><diveduration>1800</diveduration></informationafterdive>
+            <samples><waypoint><depth>0</depth><divetime>0</divetime></waypoint></samples></dive>
+          <dive id="b"><informationbeforedive><datetime>2026-01-01T12:00:00Z</datetime></informationbeforedive>
+            <informationafterdive><greatestdepth>12.0</greatestdepth><diveduration>1200</diveduration></informationafterdive>
+            <samples><waypoint><depth>0</depth><divetime>0</divetime></waypoint></samples></dive>
+        </repetitiongroup></profiledata></uddf>`,
+    );
+    await convert(twoDives, { from: 'uddf', to: 'uddf' });
+    const out = stdoutText();
+    expect(out.split('<uddf').length - 1).toBe(2);
+  });
+});
+
 describe('convert --from override', () => {
   it('honours --from dc-xml on a file that would also sniff as dc-xml', async () => {
     await convert(DC_XML, { from: 'dc-xml' });
@@ -144,7 +217,9 @@ describe('convert --from override', () => {
 
   it('rejects an unknown --from with a CliError', async () => {
     await expect(convert(DC_XML, { from: 'bogus' })).rejects.toBeInstanceOf(CliError);
-    await expect(convert(DC_XML, { from: 'bogus' })).rejects.toThrow('Expected "fit", "sw-xml", or "dc-xml"');
+    await expect(convert(DC_XML, { from: 'bogus' })).rejects.toThrow(
+      'Expected "fit", "sw-xml", "dc-xml", or "uddf"',
+    );
   });
 
   it('rejects an unknown --to with a CliError', async () => {
