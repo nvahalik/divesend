@@ -46,10 +46,6 @@ function buildSSISamples(dive: CanonicalDive): SSISample[] {
   let prevDepthM: number | undefined;
   let prevTimeS: number | undefined;
 
-  const gasMixes = dive.header.gasMixes;
-  const multiGas = Array.isArray(gasMixes) && gasMixes.length > 0;
-  let prevGn = 0;
-
   dive.samples.forEach((s: DiveSample, index: number) => {
     let speed = 0.0;
     if (prevDepthM !== undefined && prevTimeS !== undefined && s.timeS > prevTimeS) {
@@ -74,17 +70,6 @@ function buildSSISamples(dive: CanonicalDive): SSISample[] {
     };
     if (s.tankPressureBar != null) {
       sample.pressure = s.tankPressureBar;
-    }
-
-    // Multi-gas: gn is the 1-based mix number, gs flags a switch from the previous
-    // sample's mix. SSI's exact gn/gs semantics are not round-trip-verified against
-    // a real multi-gas dive read back from SSI -- this is a best-effort mapping,
-    // inert unless a caller populates header.gasMixes + sample.gasMixIndex.
-    if (multiGas && s.gasMixIndex != null && s.gasMixIndex >= 0 && s.gasMixIndex < gasMixes!.length) {
-      const gn = s.gasMixIndex + 1;
-      sample.gn = gn;
-      sample.gs = prevGn !== 0 && gn !== prevGn ? 1 : 0;
-      prevGn = gn;
     }
 
     samples.push(sample);
@@ -271,10 +256,14 @@ export function transformDive(dive: CanonicalDive, deviceSerialNumber?: string):
   const hasHeaderHr =
     header.heartRateAvgBpm != null || header.heartRateMinBpm != null || header.heartRateMaxBpm != null;
   if (hrValues.length > 0 || hasHeaderHr) {
-    payload.odin_user_log_heartRateDataset = serializeWithForcedDoubles(
-      dive.samples.map((s) => s.heartRateBpm ?? null),
-      () => true
-    );
+    // Only ship the dataset when at least one sample actually carries a reading --
+    // header-only HR would otherwise emit an all-null (or empty) array.
+    if (hrValues.length > 0) {
+      payload.odin_user_log_heartRateDataset = serializeWithForcedDoubles(
+        dive.samples.map((s) => s.heartRateBpm ?? null),
+        () => true
+      );
+    }
     const hrMin = header.heartRateMinBpm ?? arrayMin(hrValues);
     const hrMax = header.heartRateMaxBpm ?? arrayMax(hrValues);
     const hrAvg =

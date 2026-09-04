@@ -245,6 +245,18 @@ describe('transformDive enrichments — heart rate', () => {
     expect(payload.odin_user_log_heartRateAvg).toBe(120);
   });
 
+  it('emits the scalar HR keys but no dataset when only header HR is set (no sample HR)', () => {
+    const payload = transformDive(
+      makeDive({ heartRateAvgBpm: 120, heartRateMinBpm: 55, heartRateMaxBpm: 165 }, [
+        { timeS: 0, depthM: 0, tempC: 24, ndlS: null, tankPressureBar: null, decoStopDepthM: null, ttsS: null },
+      ])
+    );
+    expect(payload.odin_user_log_heartRateAvg).toBe(120);
+    expect(payload.odin_user_log_heartRateMin).toBe(55);
+    expect(payload.odin_user_log_heartRateMax).toBe(165);
+    expect(payload.odin_user_log_heartRateDataset).toBeUndefined();
+  });
+
   it('emits no heart-rate keys when there is no HR anywhere', () => {
     const payload = transformDive(makeDive({}, [
       { timeS: 0, depthM: 0, tempC: 24, ndlS: null, tankPressureBar: null, decoStopDepthM: null, ttsS: null },
@@ -255,30 +267,25 @@ describe('transformDive enrichments — heart rate', () => {
   });
 });
 
-describe('transformDive enrichments — multi-gas', () => {
-  const gasSamples = [0, 0, 1, 1].map((gi, i) => ({
-    timeS: i * 30,
-    depthM: 10 + i,
-    tempC: 22,
-    ndlS: null,
-    tankPressureBar: null,
-    decoStopDepthM: null,
-    ttsS: null,
-    gasMixIndex: gi,
-  }));
-
-  it('sets gn 1-based and gs on the switch sample', () => {
+describe('transformDive enrichments — multi-gas (P1: type fields only, no SSI mapping)', () => {
+  it('carries gasMixes/gasMixIndex on the type but does NOT map them into the SSI payload', () => {
+    const samples = [0, 0, 1, 1].map((gi, i) => ({
+      timeS: i * 30,
+      depthM: 10 + i,
+      tempC: 22,
+      ndlS: null,
+      tankPressureBar: null,
+      decoStopDepthM: null,
+      ttsS: null,
+      gasMixIndex: gi,
+    }));
     const payload = transformDive(
-      makeDive({ gasMixes: [{ o2Percent: 32, hePercent: 0 }, { o2Percent: 50, hePercent: 0 }] }, gasSamples)
+      makeDive({ gasMixes: [{ o2Percent: 32, hePercent: 0 }, { o2Percent: 50, hePercent: 0 }] }, samples)
     );
-    const samples = JSON.parse(payload.odin_user_log_diveSamples as string);
-    expect(samples.map((s: { gn: number }) => s.gn)).toEqual([1, 1, 2, 2]);
-    expect(samples.map((s: { gs: number }) => s.gs)).toEqual([0, 0, 1, 0]);
-  });
-
-  it('leaves gn/gs at 0 when gasMixes is unset', () => {
-    const payload = transformDive(makeDive({}, gasSamples)); // gasMixIndex present but no gasMixes
-    const samples = JSON.parse(payload.odin_user_log_diveSamples as string);
-    expect(samples.every((s: { gn: number; gs: number }) => s.gn === 0 && s.gs === 0)).toBe(true);
+    const diveSamples = JSON.parse(payload.odin_user_log_diveSamples as string);
+    // gn/gs are gradient-factor fields, not gas fields -- P1 leaves them at 0.
+    expect(diveSamples.every((s: { gn: number; gs: number }) => s.gn === 0 && s.gs === 0)).toBe(true);
+    expect(payload.odin_user_log_gfnowDataset).toBe('[0.0,0.0,0.0,0.0]');
+    expect(payload.odin_user_log_gfSurfDataset).toBe('[0.0,0.0,0.0,0.0]');
   });
 });
