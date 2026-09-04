@@ -51,8 +51,5 @@
   "dependencies": {
     "@garmin/fitsdk": "^21.171.0",
     "fast-xml-parser": "^5.11.1"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.3"
   }
 }
