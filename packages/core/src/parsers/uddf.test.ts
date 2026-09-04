@@ -171,4 +171,15 @@ describe('parseUddf', () => {
       UddfParseError,
     );
   });
+
+  it('throws UddfParseError when a dive is missing informationbeforedive > datetime', () => {
+    const xml = `<?xml version="1.0"?><uddf xmlns="http://www.streit.cc/uddf/3.2/" version="3.2.3">
+      <profiledata><repetitiongroup>
+        <dive id="a"><informationbeforedive></informationbeforedive>
+          <informationafterdive><greatestdepth>10</greatestdepth><diveduration>600</diveduration></informationafterdive>
+          <samples><waypoint><depth>0</depth><divetime>0</divetime></waypoint></samples>
+        </dive>
+      </repetitiongroup></profiledata></uddf>`;
+    expect(() => parseUddf(xml)).toThrow(UddfParseError);
+  });
 });
