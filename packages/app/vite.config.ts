@@ -1,9 +1,15 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  // Web Bluetooth requires a secure context: it works on http://localhost but is
+  // blocked on any other http origin (e.g. hitting the dev server by LAN IP from a
+  // phone). basic-ssl serves the dev server over https with a self-signed cert
+  // (accept the one-time browser warning). It also keeps the Worker's `Secure`
+  // session cookies working when the app is reached over the network.
+  plugins: [react(), tailwindcss(), basicSsl()],
   test: {
     environment: 'node',
   },
