@@ -51,3 +51,29 @@ export function toStoredDive(
     ssiDiveNumber: null,
   };
 }
+
+/**
+ * Dedup key for a dive imported from a file (not Bluetooth): the device
+ * serial when the source format had one, else just the start time. Shaped
+ * the same way as `diveId`'s `<identity>-<startTime>` so imports and BLE
+ * dives never accidentally collide (a BLE `deviceId` is a GATT device id,
+ * never equal to a device serial).
+ */
+export function importedDiveId(deviceSerial: string | null, canonicalDive: CanonicalDive): string {
+  return `${deviceSerial ?? 'import'}-${canonicalDive.header.startTime}`;
+}
+
+export function toImportedStoredDive(canonicalDive: CanonicalDive, deviceSerial: string | null): StoredDive {
+  return {
+    id: importedDiveId(deviceSerial, canonicalDive),
+    date: canonicalDive.header.startTime,
+    maxDepthM: canonicalDive.header.maxDepthM,
+    durationMinutes: diveDurationMinutes(canonicalDive),
+    computerModel: canonicalDive.header.deviceModel,
+    canonicalDive,
+    syncState: 'notSynced',
+    deviceSerialNumber: deviceSerial,
+    ssiDiveID: null,
+    ssiDiveNumber: null,
+  };
+}

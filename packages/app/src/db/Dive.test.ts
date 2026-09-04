@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diveId, diveDurationMinutes, toStoredDive } from './Dive';
+import { diveId, diveDurationMinutes, toStoredDive, importedDiveId, toImportedStoredDive } from './Dive';
 import type { CanonicalDive } from '@divesend/core';
 
 function makeCanonicalDive(overrides: Partial<CanonicalDive['header']> = {}): CanonicalDive {
@@ -63,6 +63,47 @@ describe('toStoredDive', () => {
 
   it('stores a null deviceSerialNumber as-is', () => {
     const stored = toStoredDive(makeCanonicalDive(), 'device-abc', null);
+    expect(stored.deviceSerialNumber).toBeNull();
+  });
+});
+
+describe('importedDiveId', () => {
+  it('uses the device serial when present', () => {
+    const dive = makeCanonicalDive({ startTime: '2026-01-01T10:00:00Z' });
+    expect(importedDiveId('00000000', dive)).toBe('00000000-2026-01-01T10:00:00Z');
+  });
+
+  it("falls back to 'import' when there is no serial", () => {
+    const dive = makeCanonicalDive({ startTime: '2026-01-01T10:00:00Z' });
+    expect(importedDiveId(null, dive)).toBe('import-2026-01-01T10:00:00Z');
+  });
+
+  it('is stable across repeated calls for the same dive+serial (dedup proof)', () => {
+    const dive = makeCanonicalDive({ startTime: '2026-01-01T10:00:00Z' });
+    expect(importedDiveId('00000000', dive)).toBe(importedDiveId('00000000', dive));
+  });
+});
+
+describe('toImportedStoredDive', () => {
+  it('builds a StoredDive with the imported id, serial, and notSynced state', () => {
+    const dive = makeCanonicalDive({ startTime: '2026-01-01T10:00:00Z', maxDepthM: 12.5, divetimeS: 1800, deviceModel: 'Teric' });
+    const stored = toImportedStoredDive(dive, '00000000');
+    expect(stored.id).toBe('00000000-2026-01-01T10:00:00Z');
+    expect(stored.deviceSerialNumber).toBe('00000000');
+    expect(stored.date).toBe('2026-01-01T10:00:00Z');
+    expect(stored.maxDepthM).toBe(12.5);
+    expect(stored.durationMinutes).toBe(30);
+    expect(stored.computerModel).toBe('Teric');
+    expect(stored.syncState).toBe('notSynced');
+    expect(stored.ssiDiveID).toBeNull();
+    expect(stored.ssiDiveNumber).toBeNull();
+    expect(stored.canonicalDive).toBe(dive);
+  });
+
+  it('builds the fallback id when there is no serial', () => {
+    const dive = makeCanonicalDive({ startTime: '2026-01-02T08:00:00Z' });
+    const stored = toImportedStoredDive(dive, null);
+    expect(stored.id).toBe('import-2026-01-02T08:00:00Z');
     expect(stored.deviceSerialNumber).toBeNull();
   });
 });
