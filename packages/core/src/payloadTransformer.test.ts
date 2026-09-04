@@ -220,3 +220,37 @@ describe('transformDive enrichments — scalars', () => {
     expect(payload.odin_user_log_pos_end_longitude).toBe(-118.25);
   });
 });
+
+describe('transformDive enrichments — heart rate', () => {
+  const hrSamples = [
+    { timeS: 0, depthM: 0, tempC: 24, ndlS: null, tankPressureBar: null, decoStopDepthM: null, ttsS: null, heartRateBpm: 70 },
+    { timeS: 30, depthM: 10, tempC: 22, ndlS: null, tankPressureBar: null, decoStopDepthM: null, ttsS: null, heartRateBpm: null },
+    { timeS: 60, depthM: 15, tempC: 21, ndlS: null, tankPressureBar: null, decoStopDepthM: null, ttsS: null, heartRateBpm: 90 },
+  ];
+
+  it('builds the dataset and computes min/max/avg from samples', () => {
+    const payload = transformDive(makeDive({}, hrSamples));
+    expect(payload.odin_user_log_heartRateDataset).toBe('[70.0,null,90.0]');
+    expect(payload.odin_user_log_heartRateMin).toBe(70);
+    expect(payload.odin_user_log_heartRateMax).toBe(90);
+    expect(payload.odin_user_log_heartRateAvg).toBe(80);
+  });
+
+  it('prefers header min/max/avg over sample-derived values', () => {
+    const payload = transformDive(
+      makeDive({ heartRateMinBpm: 55, heartRateMaxBpm: 165, heartRateAvgBpm: 120 }, hrSamples)
+    );
+    expect(payload.odin_user_log_heartRateMin).toBe(55);
+    expect(payload.odin_user_log_heartRateMax).toBe(165);
+    expect(payload.odin_user_log_heartRateAvg).toBe(120);
+  });
+
+  it('emits no heart-rate keys when there is no HR anywhere', () => {
+    const payload = transformDive(makeDive({}, [
+      { timeS: 0, depthM: 0, tempC: 24, ndlS: null, tankPressureBar: null, decoStopDepthM: null, ttsS: null },
+    ]));
+    for (const k of ['odin_user_log_heartRateDataset', 'odin_user_log_heartRateAvg', 'odin_user_log_heartRateMin', 'odin_user_log_heartRateMax']) {
+      expect(payload[k]).toBeUndefined();
+    }
+  });
+});

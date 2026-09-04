@@ -250,5 +250,25 @@ export function transformDive(dive: CanonicalDive, deviceSerialNumber?: string):
     payload.odin_user_log_pos_end_longitude = header.endLongitude;
   }
 
+  const hrValues = dive.samples
+    .map((s) => s.heartRateBpm)
+    .filter((v): v is number => v != null);
+  const hasHeaderHr =
+    header.heartRateAvgBpm != null || header.heartRateMinBpm != null || header.heartRateMaxBpm != null;
+  if (hrValues.length > 0 || hasHeaderHr) {
+    payload.odin_user_log_heartRateDataset = serializeWithForcedDoubles(
+      dive.samples.map((s) => s.heartRateBpm ?? null),
+      () => true
+    );
+    const hrMin = header.heartRateMinBpm ?? arrayMin(hrValues);
+    const hrMax = header.heartRateMaxBpm ?? arrayMax(hrValues);
+    const hrAvg =
+      header.heartRateAvgBpm ??
+      (hrValues.length > 0 ? roundTo(hrValues.reduce((a, b) => a + b, 0) / hrValues.length, 0) : undefined);
+    if (hrMin != null) payload.odin_user_log_heartRateMin = hrMin;
+    if (hrMax != null) payload.odin_user_log_heartRateMax = hrMax;
+    if (hrAvg != null) payload.odin_user_log_heartRateAvg = hrAvg;
+  }
+
   return payload;
 }
