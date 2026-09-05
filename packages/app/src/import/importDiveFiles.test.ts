@@ -73,7 +73,8 @@ describe('importDiveFiles', () => {
     expect(result.addedDiveCount).toBe(result.fileResults[0].diveCount);
     const stored = await getAllDives();
     expect(stored).toHaveLength(result.addedDiveCount);
-    expect(stored.every((d) => d.id.startsWith('00000000-'))).toBe(true); // scrubbed fixture's serial
+    expect(stored.every((d) => d.diveId.startsWith('00000000-'))).toBe(true); // scrubbed fixture's serial
+    expect(stored.every((d) => /^[0-9a-f-]{36}$/.test(d.id))).toBe(true); // opaque UUID primary key
   });
 
   it('re-importing the same file is a no-op dedup, not a duplicate', async () => {

@@ -21,12 +21,13 @@ jobs:
       # core is a build dependency of the CLI and app (consumed via its dist/).
       - run: npm run build -w @divesend/core
 
+      # @divesend/libdivecomputer-wasm's build AND its test compile with emcc,
+      # so the Emscripten SDK has to be on PATH before `npm test` and the final
+      # `npm run build`. Third-party action; installs latest emsdk.
+      - uses: mymindstorm/setup-emsdk@v14
+
       - run: npm test
 
       - run: npm run lint -w app
-
-      # The web app's build compiles @divesend/libdivecomputer-wasm, which needs
-      # the Emscripten SDK on PATH. Third-party action; installs latest emsdk.
-      - uses: mymindstorm/setup-emsdk@v14
 
       - run: npm run build

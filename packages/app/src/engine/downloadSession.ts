@@ -13,6 +13,7 @@ import {
   installTransport,
   openTransport,
   openDevice,
+  deviceMatchIsFallback,
   closeSession,
   getDeviceVendor,
   getDeviceProduct,
@@ -25,7 +26,7 @@ import {
 } from './webble';
 import { recordDeviceSync, getDeviceSyncRecord } from './deviceSyncHistory';
 import { toStoredDive, type RawDiveSource } from '../db/Dive';
-import { putDive } from '../db/db';
+import { upsertDive } from '../db/db';
 import { readLocalStorage, writeLocalStorage } from '../lib/storage';
 import type { CanonicalDive } from '@divesend/core';
 
@@ -212,6 +213,17 @@ export async function startDownload(): Promise<void> {
     const vendor = getDeviceVendor();
     const product = getDeviceProduct();
     announce('Device session opened: ' + vendor + ' ' + product);
+    if (deviceMatchIsFallback()) {
+      appendLog(
+        '⚠ "' +
+          (device.name ?? '') +
+          '" isn\'t a recognized model name -- opened it as ' +
+          vendor +
+          ' ' +
+          product +
+          " (a best guess). If the download fails, this model probably needs adding to the descriptor matcher."
+      );
+    }
 
     setProgressCallback((current, maximum) => setState({ transfer: { current, maximum } }));
 
@@ -223,7 +235,7 @@ export async function startDownload(): Promise<void> {
         // download completes.
         const serial = getDeviceSerialHex() || null;
         try {
-          await putDive(toStoredDive(dive, device.id, serial, rawSourceFromDive(dive)));
+          await upsertDive(toStoredDive(dive, device.id, serial, rawSourceFromDive(dive)));
           importedCount += 1;
           setState((s) => ({
             diveCount: importedCount,

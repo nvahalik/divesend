@@ -117,6 +117,19 @@ function formatTime(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/**
+ * The `odin_user_log_datetime` string SSI stores for a dive starting at
+ * `startTimeIso` -- `"YYYY-MM-DD HH:MM"` in the browser's local timezone,
+ * byte-identical to what `transformDive` writes on the `odin_user_log_datetime`
+ * key. Exported so the app can match a local dive against an already-present
+ * SSI divelog record purely by timestamp without re-deriving this format (see
+ * the app's ssi/reconcile.ts). Minute precision -- two dives on one account
+ * starting in the same minute isn't a real scenario.
+ */
+export function ssiDiveDateTimeKey(startTimeIso: string): string {
+  return formatDateTime(new Date(startTimeIso));
+}
+
 // `serializeWithForcedDoubles` + `SAMPLE_DOUBLE_FIELDS` now live in ./serialize.ts
 // (shared with the CLI's converters); imported above. Behaviour unchanged.
 

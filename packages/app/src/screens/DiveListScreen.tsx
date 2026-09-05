@@ -6,8 +6,9 @@ import type { StoredDive } from '../db/Dive';
 import { filterDives, DEFAULT_DIVE_LIST_FILTERS } from './diveListFilters';
 import type { DiveListFilters, DiveTypeFilter, WaterTypeFilter, SyncStatusFilter } from './diveListFilters';
 import { DiveProfileSparkline } from '../components/DiveProfileSparkline';
+import { SsiSyncedBadge } from '../components/SsiSyncedBadge';
 import { METERS_TO_FEET, formatDuration } from '@divesend/core';
-import { syncDive, syncAllDives } from '../ssi/diveSyncEngine';
+import { syncDive, syncAllDives, reconcileWithSSI } from '../ssi/diveSyncEngine';
 import type { ExtraDiveDetails } from '../ssi/extraDiveDetails';
 import { ExtraDiveDetailsModal } from '../components/ExtraDiveDetailsModal';
 import { importDiveFiles, type ImportResult } from '../import/importDiveFiles';
@@ -70,6 +71,23 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
   }, [refreshKey, localRefreshKey]);
 
   const refresh = () => setLocalRefreshKey((k) => k + 1);
+
+  // Whenever SSI is connected, quietly link any local dives that already exist
+  // in the user's SSI divelog (matched by timestamp) so they show as synced
+  // and don't get re-uploaded. Fire-and-forget: a divelog fetch failure here
+  // must never block the dive list from rendering.
+  useEffect(() => {
+    if (!ssiReady) return;
+    let cancelled = false;
+    reconcileWithSSI()
+      .then((linked) => {
+        if (!cancelled && linked.length > 0) refresh();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ssiReady]);
 
   const toggleHidden = async (dive: StoredDive) => {
     await setDiveHidden(dive.id, !dive.hidden);
@@ -310,11 +328,15 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
                 />
               )}
               <div className="flex-1">
-                  {new Date(dive.date).toJSON()}
                 <div className="font-semibold">{new Date(dive.date).toLocaleString()}</div>
                 <div className="text-sm text-slate-500">
                   {Math.round(dive.maxDepthM * METERS_TO_FEET)}ft &middot; {formatDuration(dive.canonicalDive.header.divetimeS)}
                 </div>
+                {dive.syncState === 'synced' && dive.ssiDiveNumber != null && (
+                  <div className="mt-1">
+                    <SsiSyncedBadge diveNumber={dive.ssiDiveNumber} />
+                  </div>
+                )}
               </div>
               {dive.canonicalDive.samples.length > 1 && <DiveProfileSparkline samples={dive.canonicalDive.samples} />}
               {!selectionMode && dive.syncState === 'notSynced' && (

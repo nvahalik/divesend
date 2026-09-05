@@ -49,7 +49,12 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: process.env.VITE_API_TARGET ?? 'http://localhost:8787',
-        changeOrigin: true,
+        // Keep the browser's Host header (dev-server origin) instead of
+        // rewriting it to the target's host. The Worker's requireMatchingOrigin
+        // CSRF check compares the request Host against the Origin header, and
+        // rewriting Host to localhost:8787 makes every state-changing request
+        // (login, /api/ssi/*) 403 with "Invalid request origin".
+        changeOrigin: false,
       },
     },
   },

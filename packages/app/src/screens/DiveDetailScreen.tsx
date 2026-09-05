@@ -6,6 +6,7 @@ import { DiveProfileChart } from '../components/DiveProfileChart';
 import { METERS_TO_FEET, BAR_TO_PSI, celsiusToFahrenheit, formatDuration, computeSacPsiPerMin } from '@divesend/core';
 import { toUddf } from '@divesend/core/parsers';
 import { diveExportFileName } from '../export/diveExportFilename';
+import { SsiSyncedBadge } from '../components/SsiSyncedBadge';
 
 function downloadBlob(data: Uint8Array | string, fileName: string, mimeType: string) {
   const blob = new Blob([data as BlobPart], { type: mimeType });
@@ -18,7 +19,8 @@ function downloadBlob(data: Uint8Array | string, fileName: string, mimeType: str
 }
 
 interface Props {
-  diveId: string;
+  /** The dive's primary key (StoredDive.id, a UUID). */
+  id: string;
   onBack: () => void;
 }
 
@@ -31,20 +33,20 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function DiveDetailScreen({ diveId, onBack }: Props) {
+export function DiveDetailScreen({ id, onBack }: Props) {
   const [dive, setDive] = useState<StoredDive | null | undefined>(undefined);
   const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setDive(undefined);
-    getDive(diveId).then((loaded) => {
+    getDive(id).then((loaded) => {
       if (!cancelled) setDive(loaded ?? null);
     });
     return () => {
       cancelled = true;
     };
-  }, [diveId]);
+  }, [id]);
 
   if (dive === undefined) return <p className="text-center text-slate-500">Loading…</p>;
   if (dive === null) return <p className="text-center text-slate-500">Dive not found.</p>;
@@ -79,7 +81,12 @@ export function DiveDetailScreen({ diveId, onBack }: Props) {
           &larr; Back
         </button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold">{new Date(dive.date).toLocaleString()}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold">{new Date(dive.date).toLocaleString()}</h1>
+            {dive.syncState === 'synced' && dive.ssiDiveNumber != null && (
+              <SsiSyncedBadge diveNumber={dive.ssiDiveNumber} />
+            )}
+          </div>
           <div className="flex gap-2">
             {dive.rawSource && (
               <button

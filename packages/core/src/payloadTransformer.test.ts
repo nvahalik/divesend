@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transformDive } from './payloadTransformer';
+import { transformDive, ssiDiveDateTimeKey } from './payloadTransformer';
 import type { CanonicalDive } from '@divesend/core';
 
 function makeDive(overrides: Partial<CanonicalDive['header']> = {}, samples: CanonicalDive['samples'] = []): CanonicalDive {
@@ -287,5 +287,16 @@ describe('transformDive enrichments — multi-gas (P1: type fields only, no SSI 
     expect(diveSamples.every((s: { gn: number; gs: number }) => s.gn === 0 && s.gs === 0)).toBe(true);
     expect(payload.odin_user_log_gfnowDataset).toBe('[0.0,0.0,0.0,0.0]');
     expect(payload.odin_user_log_gfSurfDataset).toBe('[0.0,0.0,0.0,0.0]');
+  });
+});
+
+describe('ssiDiveDateTimeKey', () => {
+  it('is byte-identical to the odin_user_log_datetime transformDive writes', () => {
+    const dive = makeDive({ startTime: '2026-07-28T12:26:00Z' });
+    expect(ssiDiveDateTimeKey(dive.header.startTime)).toBe(transformDive(dive).odin_user_log_datetime);
+  });
+
+  it('produces a "YYYY-MM-DD HH:MM" string', () => {
+    expect(ssiDiveDateTimeKey('2026-07-28T12:26:00Z')).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 });

@@ -10,6 +10,7 @@ import {
   takeGuestSsiPassword,
 } from '../ssi/guestSsiSession';
 import { linkSSI, unlinkSSI, getDivelog, fetchGuestSsiToken, SSIHttpError } from '../ssi/ssiClient';
+import { reconcileDivesWithDivelog } from '../ssi/diveSyncEngine';
 import { clearAllDives } from '../db/db';
 import { removeLocalStorageByPrefix } from '../lib/storage';
 import { FINGERPRINT_STORAGE_PREFIX } from '../engine/webble';
@@ -151,7 +152,10 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
     setCountError(null);
     getDivelog()
       .then((records) => {
-        if (!cancelled) setDiveCount(records.length);
+        if (cancelled) return;
+        setDiveCount(records.length);
+        // Reuse this divelog fetch to link any local dives already on SSI.
+        void reconcileDivesWithDivelog(records).catch(() => {});
       })
       .catch((err) => {
         if (cancelled) return;

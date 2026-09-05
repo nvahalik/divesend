@@ -32,6 +32,7 @@ function makeCanonicalDive(overrides: Partial<CanonicalDive['header']> = {}): Ca
 function makeDive(overrides: Partial<StoredDive> = {}, headerOverrides: Partial<CanonicalDive['header']> = {}): StoredDive {
   return {
     id: overrides.id ?? '1',
+    diveId: overrides.diveId ?? overrides.id ?? '1',
     date: '2026-07-28T12:26:00Z',
     maxDepthM: 3.63,
     durationMinutes: 10,
