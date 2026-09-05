@@ -7,6 +7,7 @@ interface WebbleModuleWebble {
   write(bytes: Uint8Array): Promise<boolean>;
   onDive(json: string): void;
   onDiveError(index: number, message: string): void;
+  onProgress(current: number, maximum: number): void;
 }
 
 interface WebbleModule {
@@ -104,10 +105,10 @@ export function waitForEngineReady(): Promise<void> {
  * vendors with a combined Rx/Tx characteristic). Resets any leftover
  * notification queue/listener from a prior session first.
  *
- * Call this before setDiveCallbacks() every session -- it resets
- * Module.webble.onDive/onDiveError to no-ops, so calling setDiveCallbacks()
- * first would have its registration silently overwritten, and dives would
- * be dropped with no visible error.
+ * Call this before setDiveCallbacks()/setProgressCallback() every session --
+ * it resets Module.webble.onDive/onDiveError/onProgress to no-ops, so
+ * calling those first would have their registrations silently overwritten,
+ * and dives (or progress updates) would be dropped with no visible error.
  */
 export async function installTransport(
   rx: BluetoothRemoteGATTCharacteristic,
@@ -155,6 +156,7 @@ export async function installTransport(
     },
     onDive: () => {},
     onDiveError: () => {},
+    onProgress: () => {},
   };
 }
 
@@ -194,6 +196,15 @@ export function getLatestFingerprintHex(): string {
   return window.Module.ccall('webble_get_latest_fingerprint_hex', 'string', [], []);
 }
 
+/**
+ * localStorage key prefix under which ConnectScreen remembers, per Bluetooth
+ * device (`prefix + device.id`), the fingerprint of the newest dive already
+ * downloaded -- so the next connect only pulls dives newer than that one.
+ * Shared here (rather than inlined at each call site) so AccountsScreen's
+ * "forget synced devices" action clears exactly what ConnectScreen writes.
+ */
+export const FINGERPRINT_STORAGE_PREFIX = 'webble-fingerprint-';
+
 export type DiveCallback = (dive: CanonicalDive) => void | Promise<void>;
 export type DiveErrorCallback = (index: number, message: string) => void;
 
@@ -203,4 +214,17 @@ export function setDiveCallbacks(onDive: DiveCallback, onDiveError: DiveErrorCal
     void onDive(JSON.parse(json) as CanonicalDive);
   };
   window.Module.webble.onDiveError = onDiveError;
+}
+
+export type ProgressCallback = (current: number, maximum: number) => void;
+
+/**
+ * Registers a callback for libdivecomputer's DC_EVENT_PROGRESS, fired during
+ * downloadNewDives(). `current`/`maximum` are the device backend's own units
+ * -- usually bytes through the raw memory dump, not a dive count -- and not
+ * every backend reports progress at all, so a caller can't assume this fires
+ * even once per session.
+ */
+export function setProgressCallback(onProgress: ProgressCallback): void {
+  window.Module.webble.onProgress = onProgress;
 }

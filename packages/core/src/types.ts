@@ -40,6 +40,21 @@ export interface DiveHeader {
   heartRateMaxBpm?: number | null;
   waterTypeId?: number | null;
   gasMixes?: GasMix[] | null;
+  // avgDepthM/surfacePressureBar/surfaceTemperatureC/tanks are BLE-only
+  // (DC_FIELD_AVGDEPTH/ATMOSPHERIC/TEMPERATURE_SURFACE/TANK) -- absent/null for
+  // file-imported dives and any BLE device/parser that doesn't report them.
+  avgDepthM?: number | null;
+  surfacePressureBar?: number | null;
+  surfaceTemperatureC?: number | null;
+  /** Every tank the device reports, in device order. tankBeginPressureBar/tankEndPressureBar above are tank 0. */
+  tanks?: TankInfo[];
+}
+
+export interface TankInfo {
+  beginPressureBar: number;
+  endPressureBar: number;
+  /** Index into header.gasMixes, or null when the device doesn't say which mix this tank holds. */
+  gasMixIndex: number | null;
 }
 
 export interface DiveSample {
@@ -52,6 +67,15 @@ export interface DiveSample {
   ttsS: number | null;
   heartRateBpm?: number | null;
   gasMixIndex?: number | null;
+  // BLE-only (DC_SAMPLE_SETPOINT/PPO2/CNS/RBT/BEARING/EVENT) -- absent/empty for
+  // file-imported dives and any device/parser that doesn't report them.
+  setpointBar?: number | null;
+  ppo2Bar?: number | null;
+  cnsPercent?: number | null;
+  remainingBottomTimeMin?: number | null;
+  bearingDeg?: number | null;
+  /** Named alarms/markers at this instant (e.g. "ceiling", "safetystop", "bookmark"); empty if none. */
+  events?: string[];
 }
 
 export interface GasMix {
@@ -62,4 +86,8 @@ export interface GasMix {
 export interface CanonicalDive {
   header: DiveHeader;
   samples: DiveSample[];
+  // Hex-encoded verbatim device buffer (the exact bytes dc_parser_new saw),
+  // present only for BLE downloads. Exists purely to support "export raw
+  // dive data" round-tripping -- not for any parsing/decoding use.
+  rawDataHex?: string | null;
 }

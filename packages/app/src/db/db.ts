@@ -52,6 +52,12 @@ export async function setDiveHidden(id: string, hidden: boolean): Promise<void> 
   await putDive(dive);
 }
 
+/** Deletes every stored dive. Local-only -- does not touch anything already synced to SSI. */
+export async function clearAllDives(): Promise<void> {
+  const db = await getDb();
+  await db.clear('dives');
+}
+
 /**
  * Closes the current connection (if any) and clears the cached promise so a
  * subsequent call re-opens a fresh connection. Mainly useful in tests, where

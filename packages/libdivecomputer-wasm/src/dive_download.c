@@ -20,6 +20,15 @@ EM_JS(void, webble_js_on_dive_error, (int index, const char *message), {
 	Module.webble.onDiveError(index, UTF8ToString(message));
 });
 
+// current/maximum are libdivecomputer's own units for this device (usually
+// bytes through the raw memory dump, not a dive count -- there's no API that
+// tells us the total number of dives before the manifest walk finishes), so
+// JS only ever gets to show "how far through the transfer", not "dive N of
+// M". Fired from the same synchronous, non-BLE-I/O context as onDive above.
+EM_JS(void, webble_js_on_progress, (unsigned int current, unsigned int maximum), {
+	Module.webble.onProgress(current, maximum);
+});
+
 static char *g_latest_fingerprint_hex = NULL;
 static int g_dive_index = 0;
 
@@ -65,6 +74,19 @@ hex_encode (const unsigned char *bytes, unsigned int size)
 	}
 	hex[size * 2] = '\0';
 	return hex;
+}
+
+static void
+event_callback (dc_device_t *device, dc_event_type_t event, const void *data, void *userdata)
+{
+	(void) device;
+	(void) userdata;
+
+	if (event != DC_EVENT_PROGRESS) {
+		return;
+	}
+	const dc_event_progress_t *progress = (const dc_event_progress_t *) data;
+	webble_js_on_progress (progress->current, progress->maximum);
 }
 
 // dc_dive_callback_t: returning 0 stops dc_device_foreach's walk, non-zero
@@ -126,6 +148,11 @@ webble_download_new_dives (const char *fingerprint_hex)
 	g_dive_index = 0;
 	free (g_latest_fingerprint_hex);
 	g_latest_fingerprint_hex = NULL;
+
+	// Best-effort: not every backend implements DC_EVENT_PROGRESS, so a
+	// failure here just means no progress events arrive -- not fatal to the
+	// download itself.
+	dc_device_set_events (device, DC_EVENT_PROGRESS, event_callback, NULL);
 
 	dc_status_t status = dc_device_foreach (device, dive_callback, NULL);
 	if (status != DC_STATUS_SUCCESS) {

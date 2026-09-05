@@ -30,7 +30,7 @@ export async function importDiveFiles(files: File[]): Promise<ImportResult> {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const imported = await parseDiveFile(bytes);
       for (const { dive, deviceSerial } of imported) {
-        await putDive(toImportedStoredDive(dive, deviceSerial));
+        await putDive(toImportedStoredDive(dive, deviceSerial, { bytes, fileName: file.name }));
       }
       fileResults.push({ fileName: file.name, status: 'ok', diveCount: imported.length });
       addedDiveCount += imported.length;

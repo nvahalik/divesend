@@ -2,6 +2,18 @@ import type { CanonicalDive } from '@divesend/core';
 
 export type SyncState = 'notSynced' | 'synced' | 'doNotSync';
 
+/**
+ * The dive's original source bytes, verbatim -- the uploaded file for a file
+ * import, or the raw buffer libdivecomputer handed us for a BLE download.
+ * Kept alongside (not instead of) the parsed `canonicalDive` purely so the
+ * "export raw" feature can hand back exactly what came in, unmodified.
+ */
+export interface RawDiveSource {
+  bytes: Uint8Array;
+  /** Suggested filename for a raw-export download. */
+  fileName: string;
+}
+
 export interface StoredDive {
   id: string;
   date: string;
@@ -17,6 +29,8 @@ export interface StoredDive {
   ssiDiveNumber: number | null;
   /** User-hidden from the dive list. Undefined/false means visible -- no migration needed for existing dives. */
   hidden?: boolean;
+  /** Absent for dives stored before this field existed, or a BLE dive whose device doesn't hand us raw bytes. */
+  rawSource?: RawDiveSource | null;
 }
 
 /**
@@ -38,7 +52,8 @@ export function diveDurationMinutes(canonicalDive: CanonicalDive): number {
 export function toStoredDive(
   canonicalDive: CanonicalDive,
   deviceId: string,
-  deviceSerialNumber: string | null
+  deviceSerialNumber: string | null,
+  rawSource?: RawDiveSource | null
 ): StoredDive {
   return {
     id: diveId(deviceId, canonicalDive),
@@ -51,6 +66,7 @@ export function toStoredDive(
     deviceSerialNumber,
     ssiDiveID: null,
     ssiDiveNumber: null,
+    rawSource: rawSource ?? null,
   };
 }
 
@@ -65,7 +81,11 @@ export function importedDiveId(deviceSerial: string | null, canonicalDive: Canon
   return `${deviceSerial ?? 'import'}-${canonicalDive.header.startTime}`;
 }
 
-export function toImportedStoredDive(canonicalDive: CanonicalDive, deviceSerial: string | null): StoredDive {
+export function toImportedStoredDive(
+  canonicalDive: CanonicalDive,
+  deviceSerial: string | null,
+  rawSource?: RawDiveSource | null
+): StoredDive {
   return {
     id: importedDiveId(deviceSerial, canonicalDive),
     date: canonicalDive.header.startTime,
@@ -77,5 +97,6 @@ export function toImportedStoredDive(canonicalDive: CanonicalDive, deviceSerial:
     deviceSerialNumber: deviceSerial,
     ssiDiveID: null,
     ssiDiveNumber: null,
+    rawSource: rawSource ?? null,
   };
 }

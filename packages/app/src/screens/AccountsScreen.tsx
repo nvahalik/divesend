@@ -10,8 +10,113 @@ import {
   takeGuestSsiPassword,
 } from '../ssi/guestSsiSession';
 import { linkSSI, unlinkSSI, getDivelog, fetchGuestSsiToken, SSIHttpError } from '../ssi/ssiClient';
+import { clearAllDives } from '../db/db';
+import { removeLocalStorageByPrefix } from '../lib/storage';
+import { FINGERPRINT_STORAGE_PREFIX } from '../engine/webble';
 import { AuthForm } from '../components/AuthForm';
 import { LoginForm } from '../components/LoginForm';
+
+/**
+ * Forgets every per-device "newest dive already downloaded" fingerprint ConnectScreen keeps in
+ * localStorage. Non-destructive to any stored dive -- it only affects future syncs, which will
+ * redownload everything from each dive computer instead of just what's new. Low-stakes enough
+ * (unlike ClearAllDivesSection) that it doesn't need a confirm step.
+ */
+function ForgetSyncedDevicesSection() {
+  const [cleared, setCleared] = useState(false);
+
+  const handleClick = () => {
+    removeLocalStorageByPrefix(FINGERPRINT_STORAGE_PREFIX);
+    setCleared(true);
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="mb-2 text-sm font-semibold text-slate-700">Sync history</div>
+      <p className="mb-3 text-sm text-slate-500">
+        Forget which dives were already downloaded from each dive computer. The next connect will
+        redownload every dive on the device instead of just the new ones -- already-imported dives
+        won't be duplicated, but the download will take longer.
+      </p>
+      {cleared ? (
+        <p className="text-sm text-slate-500">Done -- the next connect will redownload from scratch.</p>
+      ) : (
+        <button
+          onClick={handleClick}
+          className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+        >
+          Forget synced devices
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Deletes every dive stored in this browser. Local-only (doesn't touch SSI), so it's offered
+ * the same way regardless of account/SSI-link state -- rendered once per branch below rather
+ * than lifted into AccountsScreen's own state, since its confirm/error state is entirely
+ * self-contained and none of the branches need to react to it.
+ */
+function ClearAllDivesSection() {
+  const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cleared, setCleared] = useState(false);
+
+  const handleClear = async () => {
+    setClearing(true);
+    setError(null);
+    try {
+      await clearAllDives();
+      setConfirming(false);
+      setCleared(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+      <div className="mb-2 text-sm font-semibold text-red-800">Danger zone</div>
+      {cleared ? (
+        <p className="text-sm text-red-700">All dives stored in this browser have been cleared.</p>
+      ) : confirming ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-red-700">
+            This permanently deletes every dive stored in this browser. This cannot be undone.
+          </p>
+          {error && <p className="text-sm text-red-700">{error}</p>}
+          <div className="flex gap-3">
+            <button
+              onClick={() => void handleClear()}
+              disabled={clearing}
+              className="w-fit rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {clearing ? 'Clearing…' : 'Yes, clear all dives'}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={clearing}
+              className="w-fit rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirming(true)}
+          className="w-fit rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100"
+        >
+          Clear all dives
+        </button>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   /** App.tsx's `if (!user)` gate guarantees a resolved, non-null session before this renders. */
@@ -195,6 +300,9 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
           <div className="mb-2 text-sm font-semibold text-slate-700">Create an account</div>
           <AuthForm onAuthenticated={handleAuthenticated} />
         </div>
+
+        <ForgetSyncedDevicesSection />
+        <ClearAllDivesSection />
       </div>
     );
   }
@@ -208,6 +316,8 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
           <div className="text-sm text-slate-500">Logged in as {user.email}</div>
         </div>
         <LoginForm onLogin={handleLinkSSI} />
+        <ForgetSyncedDevicesSection />
+        <ClearAllDivesSection />
       </div>
     );
   }
@@ -241,6 +351,8 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
           Log out
         </button>
       </div>
+      <ForgetSyncedDevicesSection />
+      <ClearAllDivesSection />
     </div>
   );
 }

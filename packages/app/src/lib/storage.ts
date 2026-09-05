@@ -34,3 +34,21 @@ export function removeLocalStorage(key: string): void {
     // current tab even if the persisted copy couldn't be cleared.
   }
 }
+
+/**
+ * Removes every localStorage key starting with `prefix` -- for keys that are
+ * namespaced per-device (or otherwise not individually known ahead of time),
+ * e.g. ConnectScreen's per-device sync fingerprint. Snapshots the key list
+ * before removing anything, since mutating localStorage while iterating it
+ * live is unreliable across browsers.
+ */
+export function removeLocalStorageByPrefix(prefix: string): void {
+  try {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix));
+    for (const key of keys) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage disabled/unavailable -- nothing more to do.
+  }
+}

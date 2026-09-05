@@ -4,6 +4,18 @@ import { getDive } from '../db/db';
 import type { StoredDive } from '../db/Dive';
 import { DiveProfileChart } from '../components/DiveProfileChart';
 import { METERS_TO_FEET, BAR_TO_PSI, celsiusToFahrenheit, formatDuration, computeSacPsiPerMin } from '@divesend/core';
+import { toUddf } from '@divesend/core/parsers';
+import { diveExportFileName } from '../export/diveExportFilename';
+
+function downloadBlob(data: Uint8Array | string, fileName: string, mimeType: string) {
+  const blob = new Blob([data as BlobPart], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface Props {
   diveId: string;
@@ -21,6 +33,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function DiveDetailScreen({ diveId, onBack }: Props) {
   const [dive, setDive] = useState<StoredDive | null | undefined>(undefined);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,13 +56,48 @@ export function DiveDetailScreen({ diveId, onBack }: Props) {
   const hadDecoStop = samples.some((s) => (s.decoStopDepthM ?? 0) > 0);
   const sacPsiPerMin = computeSacPsiPerMin(dive.canonicalDive);
 
+  const handleExportRaw = () => {
+    if (!dive.rawSource) return;
+    setExportError(null);
+    downloadBlob(dive.rawSource.bytes, dive.rawSource.fileName, 'application/octet-stream');
+  };
+
+  const handleExportUddf = () => {
+    setExportError(null);
+    try {
+      const xml = toUddf(dive.canonicalDive);
+      downloadBlob(xml, diveExportFileName(dive.date, 'uddf'), 'application/xml');
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <button onClick={onBack} className="text-sm font-medium text-slate-500 hover:text-slate-900">
           &larr; Back
         </button>
-        <h1 className="mt-2 text-2xl font-bold">{new Date(dive.date).toLocaleString()}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold">{new Date(dive.date).toLocaleString()}</h1>
+          <div className="flex gap-2">
+            {dive.rawSource && (
+              <button
+                onClick={handleExportRaw}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Export raw
+              </button>
+            )}
+            <button
+              onClick={handleExportUddf}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Export UDDF
+            </button>
+          </div>
+        </div>
+        {exportError && <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{exportError}</p>}
       </div>
 
       <section className="grid grid-cols-3 gap-4 rounded-2xl border border-slate-200 bg-white p-4">

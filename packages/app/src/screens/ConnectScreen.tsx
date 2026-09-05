@@ -12,9 +12,11 @@ import {
   getDeviceSerialHex,
   downloadNewDives,
   getLatestFingerprintHex,
+  FINGERPRINT_STORAGE_PREFIX,
   setDiveCallbacks,
+  setProgressCallback,
 } from '../engine/webble';
-import { toStoredDive } from '../db/Dive';
+import { toStoredDive, type RawDiveSource } from '../db/Dive';
 import { putDive } from '../db/db';
 import { readLocalStorage, writeLocalStorage } from '../lib/storage';
 import { isWebBluetoothSupported } from '../lib/webBluetooth';
@@ -25,12 +27,51 @@ interface Props {
   onDivesImported: () => void;
 }
 
+/** Decodes a lowercase hex string (as emitted by the C side's hex_encode) into raw bytes. */
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/** Builds a RawDiveSource from a BLE-downloaded dive's rawDataHex, or null if it's missing/empty. */
+function rawSourceFromDive(dive: CanonicalDive): RawDiveSource | null {
+  if (!dive.rawDataHex) return null;
+  // Strip characters unsafe in filenames (":" from the ISO timestamp, etc.).
+  const safeStartTime = dive.header.startTime.replace(/[^A-Za-z0-9._-]/g, '-');
+  const safeModel = dive.header.deviceModel.replace(/[^A-Za-z0-9._-]/g, '-');
+  return {
+    bytes: hexToBytes(dive.rawDataHex),
+    fileName: `${safeModel}-${safeStartTime}.bin`,
+  };
+}
+
 export function ConnectScreen({ onDivesImported }: Props) {
   const [log, setLog] = useState<string[]>([]);
   const [progress, setProgress] = useState<string[]>([]);
   const [connecting, setConnecting] = useState(false);
+  // The single most-recent stage message, shown prominently instead of only
+  // inside the collapsed Log below -- without this, everything between
+  // clicking Connect and the first dive streaming in (device picker, GATT
+  // handshake, service/characteristic resolution) was invisible unless the
+  // user thought to expand Log, which read as "nothing is happening."
+  const [stage, setStage] = useState<string | null>(null);
+  // Byte-level (not dive-count) progress from libdivecomputer's
+  // DC_EVENT_PROGRESS -- see setProgressCallback's doc comment. Not every
+  // device backend reports this, so it may just never update.
+  const [transfer, setTransfer] = useState<{ current: number; maximum: number } | null>(null);
+  const [diveCount, setDiveCount] = useState(0);
 
   const appendLog = useCallback((msg: string) => setLog((l) => [...l, msg]), []);
+  const announce = useCallback(
+    (msg: string) => {
+      appendLog(msg);
+      setStage(msg);
+    },
+    [appendLog]
+  );
 
   const connect = useCallback(async () => {
     if (!navigator.bluetooth) {
@@ -40,6 +81,9 @@ export function ConnectScreen({ onDivesImported }: Props) {
 
     setConnecting(true);
     setProgress([]);
+    setStage(null);
+    setTransfer(null);
+    setDiveCount(0);
     let importedCount = 0;
 
     try {
@@ -49,10 +93,11 @@ export function ConnectScreen({ onDivesImported }: Props) {
       // this must happen unconditionally, every time.
       await closeSession();
 
+      announce('Waiting for device selection…');
       const device = await navigator.bluetooth.requestDevice({
         filters: VENDOR_BLE_PROFILES.map((p) => ({ services: [p.service] })),
       });
-      appendLog('Selected device: ' + device.name);
+      announce('Selected device: ' + device.name);
 
       const server = await device.gatt!.connect();
 
@@ -70,46 +115,48 @@ export function ConnectScreen({ onDivesImported }: Props) {
           }
           // A different failure (e.g. the device disconnected mid-probe) --
           // don't silently reinterpret it as "no vendor matched."
-          appendLog('GATT error while identifying the device: ' + String(e));
+          announce('GATT error while identifying the device: ' + String(e));
           return;
         }
       }
       if (!matched) {
-        appendLog('Connected, but none of the known vendor services were found on this device.');
+        announce('Connected, but none of the known vendor services were found on this device.');
         return;
       }
-      appendLog('Resolved vendor: ' + matched.profile.vendor);
+      announce('Resolved vendor: ' + matched.profile.vendor);
 
       const rx = await matched.service.getCharacteristic(matched.profile.rx);
       const tx = await matched.service.getCharacteristic(matched.profile.tx);
       await installTransport(rx, tx);
-      appendLog('Connected and subscribed to notifications.');
+      announce('Connected and subscribed to notifications.');
 
       const openStatus = await openTransport();
       if (openStatus !== 0) {
-        appendLog('webble_open failed with status ' + openStatus);
+        announce('webble_open failed with status ' + openStatus);
         return;
       }
 
       const openDeviceStatus = await openDevice(device.name ?? '');
       if (openDeviceStatus !== 0) {
-        appendLog('webble_open_device failed with status ' + openDeviceStatus + ' (unrecognized device name?)');
+        announce('webble_open_device failed with status ' + openDeviceStatus + ' (unrecognized device name?)');
         return;
       }
 
-      appendLog('Device session opened: ' + getDeviceVendor() + ' ' + getDeviceProduct());
+      announce('Device session opened: ' + getDeviceVendor() + ' ' + getDeviceProduct());
+
+      setProgressCallback((current, maximum) => setTransfer({ current, maximum }));
 
       setDiveCallbacks(
         async (dive: CanonicalDive) => {
-            console.log("Received dive: ", dive);
           // Serial is populated as a side effect of dc_device_foreach's
           // DEVINFO event, which fires before any dive callback in the
           // same walk -- so it's already valid here, not just after the
           // whole download completes.
           const serial = getDeviceSerialHex() || null;
           try {
-            await putDive(toStoredDive(dive, device.id, serial));
+            await putDive(toStoredDive(dive, device.id, serial, rawSourceFromDive(dive)));
             importedCount += 1;
+            setDiveCount(importedCount);
             setProgress((p) => [...p, 'Downloaded dive ' + importedCount + ': ' + dive.header.startTime]);
           } catch (e) {
             // A persistence failure on this dive (IndexedDB quota, private
@@ -124,15 +171,16 @@ export function ConnectScreen({ onDivesImported }: Props) {
         (index, message) => appendLog('Dive ' + index + ' failed to decode: ' + message)
       );
 
-      const fingerprintKey = 'webble-fingerprint-' + device.id;
+      const fingerprintKey = FINGERPRINT_STORAGE_PREFIX + device.id;
       const storedFingerprint = readLocalStorage(fingerprintKey) ?? '';
 
+      announce(storedFingerprint ? 'Checking for new dives…' : 'Downloading dives…');
       const downloadResult = await downloadNewDives(storedFingerprint);
       if (downloadResult < 0) {
-        appendLog('webble_download_new_dives failed with status ' + downloadResult);
+        announce('webble_download_new_dives failed with status ' + downloadResult);
         return;
       }
-      appendLog(downloadResult === 0 ? 'Up to date -- no new dives.' : 'Downloaded ' + downloadResult + ' new dive(s).');
+      announce(downloadResult === 0 ? 'Up to date -- no new dives.' : 'Downloaded ' + downloadResult + ' new dive(s).');
 
       if (downloadResult > 0) {
         const latestFingerprint = getLatestFingerprintHex();
@@ -143,7 +191,7 @@ export function ConnectScreen({ onDivesImported }: Props) {
         }
       }
     } catch (e) {
-      appendLog('Error: ' + String(e));
+      announce('Error: ' + String(e));
     } finally {
       // Fires whenever anything was actually persisted this run, regardless
       // of whether the overall download call ultimately failed (e.g.
@@ -155,7 +203,7 @@ export function ConnectScreen({ onDivesImported }: Props) {
       }
       setConnecting(false);
     }
-  }, [appendLog, onDivesImported]);
+  }, [appendLog, announce, onDivesImported]);
 
   const bluetoothSupported = isWebBluetoothSupported();
 
@@ -171,6 +219,32 @@ export function ConnectScreen({ onDivesImported }: Props) {
         {connecting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
         {connecting ? 'Connecting…' : 'Connect'}
       </button>
+      {connecting && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+          <p className="font-medium text-slate-700">{stage ?? 'Starting…'}</p>
+          {transfer && transfer.maximum > 0 && (
+            <div className="flex flex-col gap-1">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-cyan-500 transition-[width]"
+                  style={{ width: `${Math.min(100, (transfer.current / transfer.maximum) * 100)}%` }}
+                />
+              </div>
+              {/* current/maximum are the device backend's own units (usually bytes
+                  through the raw dump, not a dive count) -- see setProgressCallback's
+                  doc comment for why this can't say "dive N of M". */}
+              <p className="text-xs text-slate-500">
+                {Math.min(100, Math.round((transfer.current / transfer.maximum) * 100))}% transferred
+              </p>
+            </div>
+          )}
+          {diveCount > 0 && (
+            <p className="text-xs text-slate-500">
+              {diveCount} dive{diveCount === 1 ? '' : 's'} downloaded so far
+            </p>
+          )}
+        </div>
+      )}
       {progress.length > 0 && (
         <ul className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
           {progress.map((line, i) => (

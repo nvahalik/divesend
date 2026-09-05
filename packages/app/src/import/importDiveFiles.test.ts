@@ -27,6 +27,28 @@ describe('importDiveFiles', () => {
     expect(stored).toHaveLength(1);
   });
 
+  it('stores the uploaded bytes and file name as rawSource on every parsed dive', async () => {
+    const file = fileFromFixture('../../../core/test/fixtures/shearwater_cloud_min.xml', 'dive.xml', 'text/xml');
+    const expectedBytes = new Uint8Array(await file.arrayBuffer());
+    await importDiveFiles([file]);
+    const stored = await getAllDives();
+    expect(stored).toHaveLength(1);
+    expect(stored[0].rawSource?.fileName).toBe('dive.xml');
+    expect(Array.from(stored[0].rawSource?.bytes ?? [])).toEqual(Array.from(expectedBytes));
+  });
+
+  it('gives every dive parsed from one file the same shared rawSource', async () => {
+    const file = fileFromFixture('../../../core/test/fixtures/shearwater_cloud.uddf', 'export.uddf', 'application/xml');
+    const expectedBytes = new Uint8Array(await file.arrayBuffer());
+    const result = await importDiveFiles([file]);
+    const stored = await getAllDives();
+    expect(stored).toHaveLength(result.addedDiveCount);
+    for (const dive of stored) {
+      expect(dive.rawSource?.fileName).toBe('export.uddf');
+      expect(Array.from(dive.rawSource?.bytes ?? [])).toEqual(Array.from(expectedBytes));
+    }
+  });
+
   it('imports the multi-format batch and reports one unrecognised file as an error without aborting the rest', async () => {
     const files = [
       fileFromFixture('../../../core/test/fixtures/shearwater_cloud_min.xml', 'a.xml', 'text/xml'),
