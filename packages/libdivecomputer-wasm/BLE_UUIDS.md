@@ -66,6 +66,15 @@ Reference: [Microchip BLE Transparent UART Service](https://microchipdeveloper.c
 - Characteristics:
   - Rx: `99a91ebd-b21f-1689-bb43-681f1f55e966` (read, write-without-response)
   - Tx: `1d1aae28-d2a8-91a1-1242-9d2973fbe571` (read, notify)
+- Newer BLE hardware generation (Sirius/Quad Ci/Quad 2/Puck Air 2 era)
+  advertises a second service UUID, `1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0`,
+  alongside the one above -- confirmed via chrome://bluetooth-internals on a
+  Quad Ci, 2026-09-05. Its own characteristics haven't been read yet (the
+  device's full GATT tree also has the service above, which is what's
+  actually used to connect -- see vendorProfiles.ts's
+  EXTRA_ADVERTISED_SERVICE_UUIDS). Only the service UUID is confirmed so
+  far, not whether every device in this generation reliably keeps the legacy
+  service too.
 
 ## Suunto
 

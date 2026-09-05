@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "divesend-website",
+  "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "divesend.com", "custom_domain": true },
+    { "pattern": "www.divesend.com", "custom_domain": true }
+  ]
+}

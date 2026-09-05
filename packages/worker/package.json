@@ -10,6 +10,7 @@
   "scripts": {
     "test": "vitest run",
     "dev": "wrangler dev",
+    "predeploy": "npm run build -w app --prefix ../..",
     "deploy": "wrangler deploy"
   },
   "keywords": [],

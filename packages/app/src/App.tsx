@@ -1,5 +1,5 @@
 // app/src/App.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { ConnectScreen } from './screens/ConnectScreen';
 import { DiveListScreen } from './screens/DiveListScreen';
@@ -9,10 +9,11 @@ import { AuthForm } from './components/AuthForm';
 import { BluetoothUnsupportedNotice } from './components/BluetoothUnsupportedNotice';
 import { isWebBluetoothSupported } from './lib/webBluetooth';
 import { resolveSession, enableGuestMode, type CurrentUser } from './auth/session';
+import { useDownloadSession } from './engine/downloadSession';
 
 const NAV_ITEMS: { to: string; label: string }[] = [
   { to: '/dives', label: 'Dives' },
-  { to: '/connect', label: 'Connect' },
+  { to: '/connect', label: 'Device' },
   { to: '/account', label: 'Account' },
 ];
 
@@ -30,12 +31,27 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [user, setUser] = useState<CurrentUser | null | undefined>(undefined);
   const [guestModeError, setGuestModeError] = useState<string | null>(null);
+  const downloadSession = useDownloadSession();
 
   const refreshUser = () => resolveSession().then(setUser);
 
   useEffect(() => {
     refreshUser();
   }, []);
+
+  // The BLE download runs independently of which screen is mounted (see
+  // engine/downloadSession.ts) -- watch its monotonic totalImported counter
+  // here, at the App root, so the Dives list refreshes as soon as a dive
+  // lands even if the user wandered off to Account or Dives mid-download.
+  // totalImported never resets (unlike diveCount, which restarts each run),
+  // so a plain !== check is enough; no risk of missing an update.
+  const lastSeenImportedRef = useRef(downloadSession.totalImported);
+  useEffect(() => {
+    if (downloadSession.totalImported !== lastSeenImportedRef.current) {
+      lastSeenImportedRef.current = downloadSession.totalImported;
+      setRefreshKey((k) => k + 1);
+    }
+  }, [downloadSession.totalImported]);
 
   if (user === undefined) {
     return <p className="p-6 text-center text-slate-500">Loading…</p>;
@@ -81,7 +97,15 @@ export function App() {
             )}
             {NAV_ITEMS.map((item) => (
               <NavLink key={item.to} to={item.to} className={navLinkClassName}>
-                {item.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {item.label}
+                  {/* Live indicator so a download in progress is visible from any
+                      screen, not just while /connect is mounted -- see
+                      engine/downloadSession.ts. */}
+                  {item.to === '/connect' && downloadSession.connecting && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" title="Downloading…" />
+                  )}
+                </span>
               </NavLink>
             ))}
           </div>
@@ -94,10 +118,7 @@ export function App() {
               element={<DiveListScreenRoute refreshKey={refreshKey} ssiReady={user.ssiLinked} />}
             />
             <Route path="/dives/:diveId" element={<DiveDetailRoute />} />
-            <Route
-              path="/connect"
-              element={<ConnectScreenRoute onDivesImported={() => setRefreshKey((k) => k + 1)} />}
-            />
+            <Route path="/connect" element={<ConnectScreen />} />
             <Route path="/account" element={<AccountsScreen user={user} onSessionChange={refreshUser} />} />
           </Routes>
         </main>
@@ -113,18 +134,6 @@ function DiveListScreenRoute({ refreshKey, ssiReady }: { refreshKey: number; ssi
       refreshKey={refreshKey}
       onSelectDive={(diveId) => navigate(`/dives/${diveId}`)}
       ssiReady={ssiReady}
-    />
-  );
-}
-
-function ConnectScreenRoute({ onDivesImported }: { onDivesImported: () => void }) {
-  const navigate = useNavigate();
-  return (
-    <ConnectScreen
-      onDivesImported={() => {
-        onDivesImported();
-        navigate('/dives');
-      }}
     />
   );
 }

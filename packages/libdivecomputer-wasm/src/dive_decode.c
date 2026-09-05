@@ -272,10 +272,19 @@ divemode_to_string (dc_divemode_t mode)
 //   Pattern B: dt.{year..second} are already true UTC; dt.timezone is
 //   purely informational (the offset the diver configured for the device's
 //   own on-screen display), unrelated to how the calendar fields were
-//   computed. Confirmed for shearwater_predator/petrel (the Perdix/Teric/
+//   computed. Confirmed for shearwater_predator/petrel (the Perdix/
 //   Peregrine family): it calls dc_datetime_gmtime on the raw device tick
 //   count with NO timezone adjustment, then sets dt.timezone afterward as a
 //   separate, unrelated field.
+//
+//   Exception within the petrel family: the Teric specifically IS pattern A,
+//   confirmed by live testing (a Teric's reported "UTC" startTime matched the
+//   diver's local wall clock, not true UTC). shearwater_predator_parser.c
+//   only ever sets a non-DC_TIMEZONE_NONE timezone for model == TERIC (with
+//   logversion >= 9) -- every other device in the family always reports
+//   DC_TIMEZONE_NONE. So listing the whole family below only changes
+//   behavior for the Teric; the guard on dt.timezone != DC_TIMEZONE_NONE
+//   below leaves Perdix/Peregrine/etc. exactly as before.
 //
 // Applying pattern A's subtraction to a pattern B device (or vice versa)
 // doesn't just fail to fix anything -- it MISLABELS an already-correct
@@ -291,6 +300,7 @@ parser_uses_local_datetime_with_timezone_field (dc_parser_t *parser)
 	case DC_FAMILY_DEEPSIX_EXCURSION:
 	case DC_FAMILY_HALCYON_SYMBIOS:
 	case DC_FAMILY_DIVESYSTEM_IDIVE:
+	case DC_FAMILY_SHEARWATER_PETREL: // only actually applies to Teric -- see above
 		return 1;
 	default:
 		return 0;

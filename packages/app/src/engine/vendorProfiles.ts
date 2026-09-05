@@ -117,3 +117,22 @@ export const VENDOR_BLE_PROFILES: VendorBleProfile[] = [
     tx: '43c620c2-1b09-4951-bc1e-9c75298cddeb',
   },
 ];
+
+/**
+ * BLE advertisement service UUIDs seen in the wild that aren't any profile's
+ * own `service` above, but DO show up on a device that also exposes one of
+ * those documented services once connected. requestDevice()'s filters match
+ * only the ~31-byte advertisement packet, not the full post-connect GATT
+ * tree -- a device with more than one GATT service often only broadcasts
+ * one of them, so a device can be perfectly supported (its actual comms
+ * channel matches a profile above) yet never appear in the picker without
+ * also filtering on whichever UUID it happens to advertise. See
+ * downloadSession.ts's requestDevice() call for how these are used.
+ *
+ * - 1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0: a Mares Quad Ci (newer BLE
+ *   hardware generation -- Sirius/Quad Ci/Quad 2/Puck Air 2 era) advertises
+ *   this, but its full GATT tree also has the documented Mares service
+ *   (544e326b-... above), which is what's actually used to connect.
+ *   Confirmed via chrome://bluetooth-internals, 2026-09-05.
+ */
+export const EXTRA_ADVERTISED_SERVICE_UUIDS: string[] = ['1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0'];

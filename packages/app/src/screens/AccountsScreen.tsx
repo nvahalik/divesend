@@ -13,20 +13,23 @@ import { linkSSI, unlinkSSI, getDivelog, fetchGuestSsiToken, SSIHttpError } from
 import { clearAllDives } from '../db/db';
 import { removeLocalStorageByPrefix } from '../lib/storage';
 import { FINGERPRINT_STORAGE_PREFIX } from '../engine/webble';
+import { forgetDeviceSyncHistory } from '../engine/deviceSyncHistory';
 import { AuthForm } from '../components/AuthForm';
 import { LoginForm } from '../components/LoginForm';
 
 /**
  * Forgets every per-device "newest dive already downloaded" fingerprint ConnectScreen keeps in
- * localStorage. Non-destructive to any stored dive -- it only affects future syncs, which will
- * redownload everything from each dive computer instead of just what's new. Low-stakes enough
- * (unlike ClearAllDivesSection) that it doesn't need a confirm step.
+ * localStorage, plus the Device screen's synced-devices history (name/vendor/last sync). Non-
+ * destructive to any stored dive -- it only affects future syncs, which will redownload
+ * everything from each dive computer instead of just what's new. Low-stakes enough (unlike
+ * ClearAllDivesSection) that it doesn't need a confirm step.
  */
 function ForgetSyncedDevicesSection() {
   const [cleared, setCleared] = useState(false);
 
   const handleClick = () => {
     removeLocalStorageByPrefix(FINGERPRINT_STORAGE_PREFIX);
+    forgetDeviceSyncHistory();
     setCleared(true);
   };
 
