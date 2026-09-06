@@ -49,6 +49,7 @@ auto-detected from the file; pass `--from` to force it. Output defaults to SSI
 | `fit`     | Garmin FIT                                   |
 | `sw-xml`  | Shearwater Cloud XML export                  |
 | `dc-xml`  | `dctool` / libdivecomputer "dctool parse" XML |
+| `bin`     | Raw dive computer download (requires built engine) |
 
 ```sh
 # Any supported file -> SSI save_divelog JSON (format sniffed from the bytes)
@@ -70,6 +71,23 @@ divesend convert weird.xml --from dc-xml
 > UDDF from FIT / Shearwater is a thinner profile than from `dc-xml` — depth,
 > time, temperature, tank pressure, gas, and gradient factors — since those
 > paths project through the leaner canonical dive shape.
+
+## Decoding raw dive files
+
+`divesend inspect` decodes a raw single-dive `.bin` (the buffer libdivecomputer
+saw during a Bluetooth download — the DiveSend app's "download raw dive data"
+button writes exactly this) and prints a one-line summary plus the full decode
+JSON.
+
+```sh
+divesend inspect Teric-2026-07-30T19-07-51Z.bin
+divesend inspect dump.bin --model "Perdix 2" -o dive.json
+```
+
+The model is guessed from the `<product>-<time>.bin` filename; override with
+`--model`. Requires the built decode engine
+(`npm run build -w @divesend/libdivecomputer-wasm`, which needs the
+Emscripten SDK).
 
 ## Logbook commands
 
