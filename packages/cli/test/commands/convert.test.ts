@@ -21,6 +21,9 @@ const UDDF_FIXTURE = fileURLToPath(new URL('../../../core/test/fixtures/garmin_s
 const UDDF = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_cloud.uddf', import.meta.url));
 const TERIC_BIN = fileURLToPath(new URL('../fixtures/teric-sample.bin', import.meta.url));
 const binRun = engineIsBuilt() ? describe : describe.skip;
+if (!engineIsBuilt()) {
+  console.warn('[convert.test.ts] engine not built — skipping raw .bin decode tests. Run: npm run build -w @divesend/libdivecomputer-wasm');
+}
 
 let tmp: string;
 let stderrSpy: ReturnType<typeof vi.spyOn>;

@@ -9,6 +9,9 @@ import { CliError } from '../../src/io.js';
 
 const FIXTURE = fileURLToPath(new URL('../fixtures/teric-sample.bin', import.meta.url));
 const run = engineIsBuilt() ? describe : describe.skip;
+if (!engineIsBuilt()) {
+  console.warn('[inspect.test.ts] engine not built — skipping raw .bin decode tests. Run: npm run build -w @divesend/libdivecomputer-wasm');
+}
 
 let tmp: string;
 let stdoutSpy: ReturnType<typeof vi.spyOn>;

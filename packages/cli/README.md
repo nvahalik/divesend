@@ -49,6 +49,7 @@ auto-detected from the file; pass `--from` to force it. Output defaults to SSI
 | `fit`     | Garmin FIT                                   |
 | `sw-xml`  | Shearwater Cloud XML export                  |
 | `dc-xml`  | `dctool` / libdivecomputer "dctool parse" XML |
+| `uddf`    | UDDF dive log                                 |
 | `bin`     | Raw dive computer download (requires built engine) |
 
 ```sh

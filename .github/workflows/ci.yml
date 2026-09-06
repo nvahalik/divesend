@@ -26,6 +26,11 @@ jobs:
       # `npm run build`. Third-party action; installs latest emsdk.
       - uses: mymindstorm/setup-emsdk@v14
 
+      # Build the wasm engine (browser + Node) so packages/cli's engine-gated
+      # tests actually run instead of skipping. emsdk is on PATH from the step
+      # above.
+      - run: npm run build -w @divesend/libdivecomputer-wasm
+
       - run: npm test
 
       - run: npm run lint -w app

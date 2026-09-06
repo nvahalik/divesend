@@ -15,7 +15,7 @@ export interface ResolvedModel {
 
 /** `<product>` from a `<product>-<YYYY...>.bin` basename, or the whole stem, or null. */
 export function productFromFilename(filePath?: string): string | null {
-  if (!filePath) return null;
+  if (!filePath || filePath === '-') return null;
   const stem = filePath.replace(/^.*[/\\]/, '').replace(/\.bin$/i, '');
   const m = stem.match(/^(.+?)-\d{4}/);
   const name = (m ? m[1] : stem).trim();

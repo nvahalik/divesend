@@ -15,6 +15,9 @@ describe('productFromFilename', () => {
     expect(productFromFilename('/x/rawdump.bin')).toBe('rawdump'); // no -YYYY -> whole stem
     expect(productFromFilename('/x/.bin')).toBeNull();
   });
+  it('treats "-" (stdin) as no filename', () => {
+    expect(productFromFilename('-')).toBeNull();
+  });
 });
 
 describe('resolveModel', () => {
@@ -33,5 +36,8 @@ describe('resolveModel', () => {
   it('throws a CliError when neither yields a product', () => {
     expect(() => resolveModel({})).toThrow(CliError);
     expect(() => resolveModel({})).toThrow('Could not determine the dive computer model');
+  });
+  it('throws when the only "path" is stdin ("-") and no --model', () => {
+    expect(() => resolveModel({ filePath: '-' })).toThrow('Could not determine the dive computer model');
   });
 });
