@@ -41,16 +41,18 @@ cli
   .command('convert [file]', 'Convert a dive file to SSI save_divelog JSON or UDDF.')
   .option(
     '--from <format>',
-    'Input format: fit, sw-xml, or dc-xml. Auto-detected from the file when omitted.',
+    'Input format: fit, sw-xml, dc-xml, uddf, or bin. Auto-detected from the file when omitted.',
   )
   .option('--to <target>', 'Output format: ssi or uddf.', { default: 'ssi' })
   .option('-o, --output <path>', 'Write to a file instead of stdout.')
+  .option('--model <name>', 'For a .bin input: the dive computer product name (guessed from the filename otherwise).')
   .example('  $ divesend convert dive.fit -o dive.ssi.json')
   .example('  $ divesend convert shearwater-export.xml -o dive.ssi.json')
   .example('  $ divesend convert dive.dctool.xml --to uddf -o dive.uddf')
+  .example('  $ divesend convert Teric-2026-07-30T19-07-51Z.bin -o dive.ssi.json')
   .example('  $ cat dive.fit | divesend convert --to uddf')
-  .action((file: string | undefined, options: { from?: string; to?: string; output?: string }) =>
-    convert(file, { from: options.from, to: options.to, output: options.output }),
+  .action((file: string | undefined, options: { from?: string; to?: string; output?: string; model?: string }) =>
+    convert(file, { from: options.from, to: options.to, output: options.output, model: options.model }),
   );
 
 cli

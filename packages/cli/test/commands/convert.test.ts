@@ -11,6 +11,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { convert } from '../../src/commands/convert.js';
 import { detectFormat } from '@divesend/core/parsers/detectFormat';
 import { CliError } from '../../src/io.js';
+import { engineIsBuilt } from '../../src/engine/engine.js';
 
 const SCUBA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.fit', import.meta.url));
 const APNEA_FIT = fileURLToPath(new URL('../../../core/test/fixtures/garmin_apnea_descent_mk2.fit', import.meta.url));
@@ -18,6 +19,8 @@ const SW_XML = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_clo
 const DC_XML = fileURLToPath(new URL('../../../core/test/fixtures/dive_2070684351785241573.dctool.xml', import.meta.url));
 const UDDF_FIXTURE = fileURLToPath(new URL('../../../core/test/fixtures/garmin_scuba_saint_catherine.uddf', import.meta.url));
 const UDDF = fileURLToPath(new URL('../../../core/test/fixtures/shearwater_cloud.uddf', import.meta.url));
+const TERIC_BIN = fileURLToPath(new URL('../fixtures/teric-sample.bin', import.meta.url));
+const binRun = engineIsBuilt() ? describe : describe.skip;
 
 let tmp: string;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
@@ -218,7 +221,7 @@ describe('convert --from override', () => {
   it('rejects an unknown --from with a CliError', async () => {
     await expect(convert(DC_XML, { from: 'bogus' })).rejects.toBeInstanceOf(CliError);
     await expect(convert(DC_XML, { from: 'bogus' })).rejects.toThrow(
-      'Expected "fit", "sw-xml", "dc-xml", or "uddf"',
+      'Expected "fit", "sw-xml", "dc-xml", "uddf", or "bin"',
     );
   });
 
@@ -227,9 +230,38 @@ describe('convert --from override', () => {
   });
 });
 
+binRun('convert <file>.bin', () => {
+  it('decodes a .bin (model from filename) to an SSI object', async () => {
+    // `resolveModel` derives the product from the basename, so the fixture
+    // must carry a real `<product>-<ISO>.bin` name to exercise that path.
+    const named = join(tmp, 'Teric-2026-07-30T19-07-51Z.bin');
+    writeFileSync(named, readFileSync(TERIC_BIN));
+    await convert(named);
+    const p = stdoutJson();
+    expect(p.odin_user_log_divecomputer_name).toBe('Teric');
+    expect(typeof p.odin_user_log_datetime).toBe('string');
+    expect(JSON.parse(p.odin_user_log_diveSamples).length).toBeGreaterThan(0);
+  });
+
+  it('decodes a .bin to UDDF with --to uddf and --model', async () => {
+    await convert(TERIC_BIN, { to: 'uddf', model: 'Teric' });
+    const out = stdoutText();
+    expect(out).toContain('<uddf version="3.2.3"');
+    const wp = parseUddf(out).uddf.profiledata.repetitiongroup.dive.samples.waypoint;
+    expect(wp.length).toBeGreaterThan(0);
+  });
+
+  it('honours an explicit --from bin on a non-.bin path', async () => {
+    const copy = join(tmp, 'raw-no-ext');
+    writeFileSync(copy, readFileSync(TERIC_BIN));
+    await convert(copy, { from: 'bin', model: 'Teric' });
+    expect(stdoutJson().odin_user_log_divecomputer_name).toBe('Teric');
+  });
+});
+
 describe('convert error contract', () => {
   it('fails with a clear message when the format cannot be detected', async () => {
-    const bad = join(tmp, 'bad.bin');
+    const bad = join(tmp, 'bad.dat');
     writeFileSync(bad, Buffer.from('not a dive file at all'));
     await expect(convert(bad)).rejects.toBeInstanceOf(CliError);
     await expect(convert(bad)).rejects.toThrow('Could not detect the input format');
