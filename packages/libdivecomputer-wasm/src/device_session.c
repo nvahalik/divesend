@@ -14,6 +14,7 @@ static dc_device_t *g_device = NULL;
 static dc_descriptor_t *g_descriptor = NULL;
 static unsigned int g_serial = 0;
 static int g_have_devinfo = 0;
+static int g_match_is_fallback = 0;
 static char g_serial_hex[16];
 
 static void
@@ -31,11 +32,12 @@ devinfo_callback (dc_device_t *device, dc_event_type_t event, const void *data, 
 	g_have_devinfo = 1;
 }
 
-// Finds the dc_descriptor_t matching this BLE device's advertised name (the
-// same lookup dctool does), then opens it generically. No vendor-specific
-// open call anywhere in this function -- dc_device_open's internal vtable
-// dispatch handles that. Status codes: -1 iterator failed, -2 no descriptor
-// matched device_name, -3 dc_device_open failed.
+// Resolves this BLE device's advertised name to a dc_descriptor_t (see
+// descriptor_match.c for how, and why it isn't just "first filter hit"), then
+// opens it generically -- no vendor-specific open call anywhere here,
+// dc_device_open's internal vtable dispatch handles that. Status codes: -1
+// unused (kept for ABI stability), -2 no descriptor could serve device_name,
+// -3 dc_device_open failed.
 EMSCRIPTEN_KEEPALIVE
 int
 webble_open_device (const char *device_name)
@@ -44,22 +46,8 @@ webble_open_device (const char *device_name)
 		webble_close_device ();
 	}
 
-	dc_iterator_t *iterator = NULL;
-	if (dc_descriptor_iterator_new (&iterator, webble_current_context ()) != DC_STATUS_SUCCESS) {
-		return -1;
-	}
-
-	dc_descriptor_t *descriptor = NULL;
-	dc_descriptor_t *match = NULL;
-	while (dc_iterator_next (iterator, &descriptor) == DC_STATUS_SUCCESS) {
-		if (dc_descriptor_filter (descriptor, DC_TRANSPORT_BLE, device_name)) {
-			match = descriptor;
-			break;
-		}
-		dc_descriptor_free (descriptor);
-	}
-	dc_iterator_free (iterator);
-
+	int is_fallback = 0;
+	dc_descriptor_t *match = webble_resolve_ble_descriptor (webble_current_context (), device_name, &is_fallback);
 	if (!match) {
 		return -2;
 	}
@@ -73,10 +61,22 @@ webble_open_device (const char *device_name)
 	}
 
 	g_descriptor = match;
+	g_match_is_fallback = is_fallback;
 
 	dc_device_set_events (g_device, DC_EVENT_DEVINFO, devinfo_callback, NULL);
 
 	return 0;
+}
+
+// 1 when webble_open_device resolved the advertised name only by falling back
+// to the first same-family descriptor (a guess -- see descriptor_match.c),
+// 0 when it was a real product-name match. Meaningful only after a successful
+// webble_open_device; reset by webble_close_device.
+EMSCRIPTEN_KEEPALIVE
+int
+webble_device_match_is_fallback (void)
+{
+	return g_match_is_fallback;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -135,6 +135,7 @@ webble_close_device (void)
 	}
 	g_have_devinfo = 0;
 	g_serial = 0;
+	g_match_is_fallback = 0;
 }
 
 dc_device_t *

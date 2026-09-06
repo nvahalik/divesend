@@ -1,14 +1,35 @@
-// Ports DiveSyncEngine.swift's sync/syncAll/performSync (reconcile/backfillDiveNumbers are
-// out of scope for this port -- see the design spec's non-goals).
+// Ports DiveSyncEngine.swift's sync/syncAll/performSync, plus a timestamp-based
+// reconcile step (link local dives that already exist in the SSI divelog rather
+// than re-uploading them). backfillDiveNumbers remains out of scope.
 
-import { putDive } from '../db/db';
+import { getAllDives, putDive } from '../db/db';
 import type { StoredDive } from '../db/Dive';
 import type { ExtraDiveDetails } from './extraDiveDetails';
 import { toOverrides } from './extraDiveDetails';
 import { buildCreatePayload, computeSacPsiPerMin, transformDive } from '@divesend/core';
+import { reconcileDives } from './reconcile';
 import { getDivelog, saveDivelog } from './ssiClient';
 
 export class DiveSyncError extends Error {}
+
+/**
+ * Links every local `notSynced` dive that already exists in `divelog` (matched
+ * by timestamp -- see reconcile.ts) to its SSI record and persists it as
+ * `synced`. Returns the dives it linked. Runs off a divelog the caller already
+ * has, so it's free to call anywhere one was just fetched.
+ */
+export async function reconcileDivesWithDivelog(divelog: Record<string, unknown>[]): Promise<StoredDive[]> {
+  const linked = reconcileDives(await getAllDives(), divelog);
+  for (const dive of linked) {
+    await putDive(dive);
+  }
+  return linked;
+}
+
+/** Fetches the divelog and reconciles every local dive against it. */
+export async function reconcileWithSSI(): Promise<StoredDive[]> {
+  return reconcileDivesWithDivelog(await getDivelog());
+}
 
 function mostRecentDive(divelog: Record<string, unknown>[]): Record<string, unknown> {
   return divelog.reduce<Record<string, unknown>>((best, current) => {
@@ -61,6 +82,11 @@ async function performSync(
 /** Syncs a single dive, fetching the account's current divelog to compute its dive number. */
 export async function syncDive(dive: StoredDive, extraDetails?: ExtraDiveDetails): Promise<number> {
   const divelog = await getDivelog();
+  // If this dive (or any other local one) already exists on SSI, link it
+  // instead of uploading a duplicate.
+  const linked = await reconcileDivesWithDivelog(divelog);
+  const alreadyThere = linked.find((d) => d.id === dive.id);
+  if (alreadyThere) return alreadyThere.ssiDiveID as number;
   return performSync(dive, mostRecentDive(divelog), nextDiveNumber(divelog), extraDetails);
 }
 
@@ -78,10 +104,15 @@ export async function syncAllDives(
   dives: StoredDive[],
   extraDetails?: ExtraDiveDetails
 ): Promise<{ dive: StoredDive; error: Error }[]> {
-  const toSync = dives.filter((d) => d.syncState === 'notSynced');
-  if (toSync.length === 0) return [];
+  const requested = dives.filter((d) => d.syncState === 'notSynced');
+  if (requested.length === 0) return [];
 
   const divelog = await getDivelog();
+  // Link any local dives already present on SSI (by timestamp) before
+  // uploading, so the batch never re-creates one as a duplicate.
+  const linkedIds = new Set((await reconcileDivesWithDivelog(divelog)).map((d) => d.id));
+  const toSync = requested.filter((d) => !linkedIds.has(d.id));
+
   const accountRecord = mostRecentDive(divelog);
   let nextNr = nextDiveNumber(divelog);
 

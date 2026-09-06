@@ -21,10 +21,12 @@ const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
   isActive ? 'font-semibold text-cyan-400' : 'text-slate-300 hover:text-white';
 
 function DiveDetailRoute() {
-  const { diveId } = useParams<{ diveId: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  // The route is only ever reached via /dives/:diveId, so diveId is always present.
-  return <DiveDetailScreen diveId={diveId!} onBack={() => navigate('/dives')} />;
+  // The route is only ever reached via /dives/:id, so id is always present.
+  // `id` is the dive's opaque UUID primary key (StoredDive.id), not the
+  // content-derived StoredDive.diveId.
+  return <DiveDetailScreen id={id!} onBack={() => navigate('/dives')} />;
 }
 
 export function App() {
@@ -117,7 +119,7 @@ export function App() {
               path="/dives"
               element={<DiveListScreenRoute refreshKey={refreshKey} ssiReady={user.ssiLinked} />}
             />
-            <Route path="/dives/:diveId" element={<DiveDetailRoute />} />
+            <Route path="/dives/:id" element={<DiveDetailRoute />} />
             <Route path="/connect" element={<ConnectScreen />} />
             <Route path="/account" element={<AccountsScreen user={user} onSessionChange={refreshUser} />} />
           </Routes>
@@ -132,7 +134,8 @@ function DiveListScreenRoute({ refreshKey, ssiReady }: { refreshKey: number; ssi
   return (
     <DiveListScreen
       refreshKey={refreshKey}
-      onSelectDive={(diveId) => navigate(`/dives/${diveId}`)}
+      // `id` is the dive's opaque UUID primary key -- URL-safe as-is.
+      onSelectDive={(id) => navigate(`/dives/${id}`)}
       ssiReady={ssiReady}
     />
   );

@@ -174,6 +174,17 @@ export async function openDevice(deviceName: string): Promise<number> {
   );
 }
 
+/**
+ * True when openDevice() couldn't match the advertised name to a specific
+ * model and fell back to the first same-family descriptor (a guess -- see
+ * descriptor_match.c). The session may still work (libdivecomputer autodetects
+ * most things from the device), but a download failure on a fallback match
+ * points at "this model needs adding" rather than a transport bug.
+ */
+export function deviceMatchIsFallback(): boolean {
+  return window.Module.ccall('webble_device_match_is_fallback', 'number', [], []) !== 0;
+}
+
 export function getDeviceVendor(): string {
   return window.Module.ccall('webble_get_device_vendor', 'string', [], []);
 }

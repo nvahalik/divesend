@@ -1,19 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { syncDive, syncAllDives } from './diveSyncEngine';
+import { syncDive, syncAllDives, reconcileWithSSI } from './diveSyncEngine';
 import type { StoredDive } from '../db/Dive';
-import type { CanonicalDive } from '@divesend/core';
+import { ssiDiveDateTimeKey, type CanonicalDive } from '@divesend/core';
 
-vi.mock('../db/db', () => ({ putDive: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../db/db', () => ({
+  putDive: vi.fn().mockResolvedValue(undefined),
+  getAllDives: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('./ssiClient', () => ({
   getDivelog: vi.fn(),
   saveDivelog: vi.fn(),
 }));
 
-import { putDive } from '../db/db';
+import { putDive, getAllDives } from '../db/db';
 import { getDivelog, saveDivelog } from './ssiClient';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getAllDives).mockResolvedValue([]);
 });
 
 function makeCanonicalDive(): CanonicalDive {
@@ -43,6 +47,7 @@ function makeCanonicalDive(): CanonicalDive {
 function makeDive(id = '1'): StoredDive {
   return {
     id,
+    diveId: id,
     date: '2026-07-28T12:26:00Z',
     maxDepthM: 3.63,
     durationMinutes: 10,
@@ -162,5 +167,51 @@ describe('syncAllDives', () => {
     expect(failures[0].dive.id).toBe('a');
     expect(ok.syncState).toBe('synced');
     expect(vi.mocked(saveDivelog)).toHaveBeenCalledTimes(2); // alreadySynced excluded
+  });
+
+  it('links a dive already present on SSI (by timestamp) instead of re-uploading it', async () => {
+    const already = makeDive('a'); // startTime 2026-07-28T12:26:00Z
+    const fresh = makeDive('b');
+    fresh.canonicalDive.header.startTime = '2026-07-28T15:00:00Z';
+    vi.mocked(getAllDives).mockResolvedValue([already, fresh]);
+    vi.mocked(getDivelog).mockResolvedValue([
+      { odin_user_log_datetime: ssiDiveDateTimeKey(already.canonicalDive.header.startTime), odin_user_log_id: 777, odin_user_log_nr: 12 },
+    ]);
+    vi.mocked(saveDivelog).mockResolvedValue({ success: { odin_user_log_id: 999 } });
+
+    const failures = await syncAllDives([already, fresh]);
+
+    expect(failures).toHaveLength(0);
+    expect(vi.mocked(saveDivelog)).toHaveBeenCalledTimes(1); // only 'b' uploaded
+    // 'a' persisted as a link to the existing SSI record.
+    const linkedPut = vi.mocked(putDive).mock.calls.find(([d]) => d.id === 'a')?.[0];
+    expect(linkedPut).toMatchObject({ syncState: 'synced', ssiDiveID: 777, ssiDiveNumber: 12 });
+  });
+});
+
+describe('reconcileWithSSI', () => {
+  it('persists every local notSynced dive whose timestamp matches an SSI record', async () => {
+    const match = makeDive('a');
+    const noMatch = makeDive('b');
+    noMatch.canonicalDive.header.startTime = '2026-01-01T00:00:00Z';
+    vi.mocked(getAllDives).mockResolvedValue([match, noMatch]);
+    vi.mocked(getDivelog).mockResolvedValue([
+      { odin_user_log_datetime: ssiDiveDateTimeKey(match.canonicalDive.header.startTime), odin_user_log_id: 5, odin_user_log_nr: 3 },
+    ]);
+
+    const linked = await reconcileWithSSI();
+
+    expect(linked.map((d) => d.id)).toEqual(['a']);
+    expect(linked[0]).toMatchObject({ syncState: 'synced', ssiDiveID: 5, ssiDiveNumber: 3 });
+    expect(putDive).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(putDive).mock.calls[0][0].id).toBe('a');
+  });
+
+  it('links nothing when no timestamps line up', async () => {
+    vi.mocked(getAllDives).mockResolvedValue([makeDive('a')]);
+    vi.mocked(getDivelog).mockResolvedValue([{ odin_user_log_datetime: '1999-01-01 00:00', odin_user_log_id: 1, odin_user_log_nr: 1 }]);
+
+    expect(await reconcileWithSSI()).toEqual([]);
+    expect(putDive).not.toHaveBeenCalled();
   });
 });

@@ -51,7 +51,8 @@ describe('toStoredDive', () => {
     const canonicalDive = makeCanonicalDive();
     const stored = toStoredDive(canonicalDive, 'device-abc', 'ABCD1234');
 
-    expect(stored.id).toBe('device-abc-2026-08-22T11:42:10Z');
+    expect(stored.id).toMatch(/^[0-9a-f-]{36}$/); // opaque UUID, not derived from content
+    expect(stored.diveId).toBe('device-abc-2026-08-22T11:42:10Z');
     expect(stored.date).toBe('2026-08-22T11:42:10Z');
     expect(stored.maxDepthM).toBe(10.75944);
     expect(stored.durationMinutes).toBe(41);
@@ -88,7 +89,8 @@ describe('toImportedStoredDive', () => {
   it('builds a StoredDive with the imported id, serial, and notSynced state', () => {
     const dive = makeCanonicalDive({ startTime: '2026-01-01T10:00:00Z', maxDepthM: 12.5, divetimeS: 1800, deviceModel: 'Teric' });
     const stored = toImportedStoredDive(dive, '00000000');
-    expect(stored.id).toBe('00000000-2026-01-01T10:00:00Z');
+    expect(stored.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(stored.diveId).toBe('00000000-2026-01-01T10:00:00Z');
     expect(stored.deviceSerialNumber).toBe('00000000');
     expect(stored.date).toBe('2026-01-01T10:00:00Z');
     expect(stored.maxDepthM).toBe(12.5);
@@ -103,7 +105,8 @@ describe('toImportedStoredDive', () => {
   it('builds the fallback id when there is no serial', () => {
     const dive = makeCanonicalDive({ startTime: '2026-01-02T08:00:00Z' });
     const stored = toImportedStoredDive(dive, null);
-    expect(stored.id).toBe('import-2026-01-02T08:00:00Z');
+    expect(stored.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(stored.diveId).toBe('import-2026-01-02T08:00:00Z');
     expect(stored.deviceSerialNumber).toBeNull();
   });
 });

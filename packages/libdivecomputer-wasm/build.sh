@@ -70,9 +70,9 @@ ls -la "$BUILD/libdivecomputer-core.a"
 
 echo "== Compiling and linking the WebBLE wasm module =="
 emcc -I "$GEN" -I "$LIBDC/include" -I "$LIBDC/src" -I "$CJSON" \
-  "$ROOT/src/ble_web.c" "$ROOT/src/device_session.c" "$ROOT/src/dive_decode.c" "$ROOT/src/dive_download.c" "$CJSON/cJSON.c" "$BUILD/libdivecomputer-core.a" \
+  "$ROOT/src/ble_web.c" "$ROOT/src/device_session.c" "$ROOT/src/descriptor_match.c" "$ROOT/src/dive_decode.c" "$ROOT/src/dive_download.c" "$CJSON/cJSON.c" "$BUILD/libdivecomputer-core.a" \
   -sASYNCIFY \
-  -sEXPORTED_FUNCTIONS=_webble_open,_webble_close,_webble_open_device,_webble_close_device,_webble_get_device_vendor,_webble_get_device_product,_webble_get_device_serial_hex,_webble_download_new_dives,_webble_get_latest_fingerprint_hex \
+  -sEXPORTED_FUNCTIONS=_webble_open,_webble_close,_webble_open_device,_webble_close_device,_webble_device_match_is_fallback,_webble_get_device_vendor,_webble_get_device_product,_webble_get_device_serial_hex,_webble_download_new_dives,_webble_get_latest_fingerprint_hex \
   -sEXPORTED_RUNTIME_METHODS=ccall,HEAPU8 \
   -sALLOW_MEMORY_GROWTH=1 \
   -o "$BUILD/libdivecomputer.js"

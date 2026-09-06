@@ -20,6 +20,7 @@
   },
   "scripts": {
     "build": "./build.sh",
+    "test": "./test.sh",
     "clean": "rm -rf build dist"
   }
 }
