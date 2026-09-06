@@ -69,10 +69,18 @@ echo "== libdivecomputer static library built =="
 ls -la "$BUILD/libdivecomputer-core.a"
 
 echo "== Compiling and linking the WebBLE wasm module =="
+ENGINE_SRCS=(
+  "$ROOT/src/ble_web.c" "$ROOT/src/device_session.c"
+  "$ROOT/src/descriptor_match.c" "$ROOT/src/dive_decode.c"
+  "$ROOT/src/dive_inspect.c" "$ROOT/src/dive_download.c"
+  "$CJSON/cJSON.c" "$BUILD/libdivecomputer-core.a"
+)
+ENGINE_EXPORTS=_webble_open,_webble_close,_webble_open_device,_webble_close_device,_webble_device_match_is_fallback,_webble_get_device_vendor,_webble_get_device_product,_webble_get_device_serial_hex,_webble_download_new_dives,_webble_get_latest_fingerprint_hex,_webble_decode_raw_to_json,_malloc,_free
+
 emcc -I "$GEN" -I "$LIBDC/include" -I "$LIBDC/src" -I "$CJSON" \
-  "$ROOT/src/ble_web.c" "$ROOT/src/device_session.c" "$ROOT/src/descriptor_match.c" "$ROOT/src/dive_decode.c" "$ROOT/src/dive_download.c" "$CJSON/cJSON.c" "$BUILD/libdivecomputer-core.a" \
+  "${ENGINE_SRCS[@]}" \
   -sASYNCIFY \
-  -sEXPORTED_FUNCTIONS=_webble_open,_webble_close,_webble_open_device,_webble_close_device,_webble_device_match_is_fallback,_webble_get_device_vendor,_webble_get_device_product,_webble_get_device_serial_hex,_webble_download_new_dives,_webble_get_latest_fingerprint_hex \
+  -sEXPORTED_FUNCTIONS="$ENGINE_EXPORTS" \
   -sEXPORTED_RUNTIME_METHODS=ccall,HEAPU8 \
   -sALLOW_MEMORY_GROWTH=1 \
   -o "$BUILD/libdivecomputer.js"
@@ -82,3 +90,19 @@ cp "$BUILD/libdivecomputer.js" "$BUILD/libdivecomputer.wasm" "$DIST/"
 
 echo "== Build complete: $DIST/libdivecomputer.js / .wasm =="
 ls -la "$DIST/libdivecomputer.js" "$DIST/libdivecomputer.wasm"
+
+echo "== Compiling and linking the Node wasm module =="
+mkdir -p "$BUILD/node"
+emcc -I "$GEN" -I "$LIBDC/include" -I "$LIBDC/src" -I "$CJSON" \
+  "${ENGINE_SRCS[@]}" \
+  -sASYNCIFY \
+  -sEXPORTED_FUNCTIONS="$ENGINE_EXPORTS" \
+  -sEXPORTED_RUNTIME_METHODS=ccall,HEAPU8 \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createLibDiveComputer \
+  -sENVIRONMENT=node \
+  -o "$BUILD/node/libdivecomputer.mjs"
+
+mkdir -p "$DIST/node"
+cp "$BUILD/node/libdivecomputer.mjs" "$BUILD/node/libdivecomputer.wasm" "$DIST/node/"
+echo "== Node build complete: $DIST/node/libdivecomputer.mjs / .wasm =="

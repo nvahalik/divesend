@@ -5,6 +5,7 @@
 #include <libdivecomputer/iostream.h>
 #include <libdivecomputer/device.h>
 #include <libdivecomputer/descriptor.h>
+#include <libdivecomputer/parser.h>
 
 // ble_web.c
 dc_context_t *webble_current_context (void);
@@ -20,5 +21,14 @@ void webble_close_device (void);
 
 // dive_decode.c (Task 5)
 dc_status_t webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_device_t *device, char **out_json);
+
+/* dive_decode.c */
+dc_status_t build_dive_json (dc_parser_t *parser, const unsigned char *data,
+                             unsigned int size, const char *device_model,
+                             char **out_json);
+
+/* dive_inspect.c */
+char *webble_decode_raw_to_json (const char *vendor, const char *product,
+                                 const unsigned char *data, int size);
 
 #endif // WEBBLE_INTERNAL_H

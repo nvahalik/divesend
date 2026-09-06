@@ -320,16 +320,14 @@ decomodel_to_string (dc_decomodel_type_t type)
 	}
 }
 
+// Builds the decode JSON from an already-constructed parser. Does NOT take
+// ownership of `parser` -- the caller destroys it. `device_model` is written
+// verbatim to header.deviceModel.
 dc_status_t
-webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_device_t *device, char **out_json)
+build_dive_json (dc_parser_t *parser, const unsigned char *data, unsigned int size,
+                 const char *device_model, char **out_json)
 {
 	*out_json = NULL;
-
-	dc_parser_t *parser = NULL;
-	dc_status_t status = dc_parser_new (&parser, device, data, size);
-	if (status != DC_STATUS_SUCCESS) {
-		return status;
-	}
 
 	dc_datetime_t dt = {0};
 	dc_parser_get_datetime (parser, &dt);
@@ -404,8 +402,6 @@ webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_dev
 		sample_list_push (&walk.list, walk.current);
 	}
 
-	dc_parser_destroy (parser);
-
 	cJSON *root = cJSON_CreateObject ();
 	cJSON *header = cJSON_CreateObject ();
 	cJSON_AddItemToObject (root, "header", header);
@@ -454,7 +450,7 @@ webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_dev
 	cJSON_AddNumberToObject (header, "gfLow", have_decomodel ? (double) decomodel.params.gf.low : 0);
 	cJSON_AddNumberToObject (header, "gfHigh", have_decomodel ? (double) decomodel.params.gf.high : 0);
 	cJSON_AddStringToObject (header, "salinity", salinity.type == DC_WATER_SALT ? "salt" : "fresh");
-	cJSON_AddStringToObject (header, "deviceModel", webble_get_device_product ());
+	cJSON_AddStringToObject (header, "deviceModel", device_model);
 	cJSON_AddNumberToObject (header, "divetimeS", (double) divetime);
 	if (have_temp_min) {
 		cJSON_AddNumberToObject (header, "minTemperatureC", temp_min);
@@ -572,4 +568,20 @@ webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_dev
 
 	*out_json = json_str;
 	return DC_STATUS_SUCCESS;
+}
+
+dc_status_t
+webble_decode_dive_to_json (const unsigned char *data, unsigned int size, dc_device_t *device, char **out_json)
+{
+	*out_json = NULL;
+
+	dc_parser_t *parser = NULL;
+	dc_status_t status = dc_parser_new (&parser, device, data, size);
+	if (status != DC_STATUS_SUCCESS) {
+		return status;
+	}
+
+	status = build_dive_json (parser, data, size, webble_get_device_product (), out_json);
+	dc_parser_destroy (parser);
+	return status;
 }

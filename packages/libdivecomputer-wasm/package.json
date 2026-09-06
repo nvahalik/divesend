@@ -16,6 +16,8 @@
   "exports": {
     "./libdivecomputer.js": "./dist/libdivecomputer.js",
     "./libdivecomputer.wasm": "./dist/libdivecomputer.wasm",
+    "./node": "./dist/node/libdivecomputer.mjs",
+    "./node/libdivecomputer.wasm": "./dist/node/libdivecomputer.wasm",
     "./package.json": "./package.json"
   },
   "scripts": {
