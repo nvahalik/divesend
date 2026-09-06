@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { cac } from 'cac';
 import { printError } from './io.js';
 import { convert } from './commands/convert.js';
+import { inspect } from './commands/inspect.js';
 import { list, get, push, create, update } from './commands/logbook.js';
 import { login, logout } from './commands/login.js';
 
@@ -50,6 +51,16 @@ cli
   .example('  $ cat dive.fit | divesend convert --to uddf')
   .action((file: string | undefined, options: { from?: string; to?: string; output?: string }) =>
     convert(file, { from: options.from, to: options.to, output: options.output }),
+  );
+
+cli
+  .command('inspect [file]', 'Decode a raw dive .bin file and print what libdivecomputer sees.')
+  .option('--model <name>', 'Dive computer product name (e.g. "Teric"). Guessed from the filename when omitted.')
+  .option('-o, --output <path>', 'Write to a file instead of stdout.')
+  .example('  $ divesend inspect Teric-2026-07-30T19-07-51Z.bin')
+  .example('  $ divesend inspect dump.bin --model "Perdix 2" -o dive.json')
+  .action((file: string | undefined, options: { model?: string; output?: string }) =>
+    inspect(file, { model: options.model, output: options.output }),
   );
 
 cli
