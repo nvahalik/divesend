@@ -118,15 +118,40 @@ function formatTime(date: Date): string {
 }
 
 /**
- * The `odin_user_log_datetime` string SSI stores for a dive starting at
- * `startTimeIso` -- `"YYYY-MM-DD HH:MM"` in the browser's local timezone,
- * byte-identical to what `transformDive` writes on the `odin_user_log_datetime`
- * key. Exported so the app can match a local dive against an already-present
- * SSI divelog record purely by timestamp without re-deriving this format (see
- * the app's ssi/reconcile.ts). Minute precision -- two dives on one account
- * starting in the same minute isn't a real scenario.
+ * Same "YYYY-MM-DD HH:MM" shape as `formatDateTime`, but reads the *UTC* fields
+ * of `date`. Callers pass an instant already shifted by the dive's own UTC
+ * offset, so the UTC getters then spell out the diver's local wall-clock --
+ * independent of the timezone the host happens to be in now.
  */
-export function ssiDiveDateTimeKey(startTimeIso: string): string {
+function formatDateTimeUtc(date: Date): string {
+  return (
+    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`
+  );
+}
+
+/**
+ * The `odin_user_log_datetime` string SSI stores for a dive starting at the UTC
+ * instant `startTimeIso` -- `"YYYY-MM-DD HH:MM"`. Exported so the app can match a
+ * local dive against an already-present SSI divelog record purely by timestamp
+ * without re-deriving this format (see the app's ssi/reconcile.ts). Minute
+ * precision -- two dives on one account starting in the same minute isn't a real
+ * scenario.
+ *
+ * SSI stores the diver's *local wall-clock at the dive site*. When
+ * `utcOffsetMinutes` is known (the wasm engine emits it for devices that record
+ * a zone, e.g. the Shearwater Teric) the instant is shifted by that offset and
+ * formatted from its UTC fields, so the key stays stable no matter what timezone
+ * the browser is in now -- a diver who travels still sees their synced dives
+ * matched. When it is null/undefined the instant is formatted with local `Date`
+ * getters, preserving the historical behaviour for decoders whose `startTime`
+ * fields are already local wall-clock merely labelled `Z`, and matching the
+ * bytes `transformDive` writes on the same key.
+ */
+export function ssiDiveDateTimeKey(startTimeIso: string, utcOffsetMinutes?: number | null): string {
+  if (typeof utcOffsetMinutes === 'number' && Number.isFinite(utcOffsetMinutes)) {
+    return formatDateTimeUtc(new Date(new Date(startTimeIso).getTime() + utcOffsetMinutes * 60_000));
+  }
   return formatDateTime(new Date(startTimeIso));
 }
 

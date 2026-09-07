@@ -299,4 +299,23 @@ describe('ssiDiveDateTimeKey', () => {
   it('produces a "YYYY-MM-DD HH:MM" string', () => {
     expect(ssiDiveDateTimeKey('2026-07-28T12:26:00Z')).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
+
+  it('renders the diver-local wall-clock when a UTC offset is given, regardless of host timezone', () => {
+    // Real Shearwater Teric dive #18: startTime is true UTC, the computer was on
+    // UTC-4, and SSI stores "2026-07-30 15:07". The key must be that string on
+    // any host -- this is what breaks when the diver later views from another zone.
+    expect(ssiDiveDateTimeKey('2026-07-30T19:07:51Z', -240)).toBe('2026-07-30 15:07');
+  });
+
+  it('rolls the date backwards across local midnight when the offset crosses it', () => {
+    expect(ssiDiveDateTimeKey('2026-07-31T02:30:00Z', -240)).toBe('2026-07-30 22:30');
+  });
+
+  it('rolls the date forwards across local midnight for an eastern offset', () => {
+    expect(ssiDiveDateTimeKey('2026-07-30T22:30:00Z', 600)).toBe('2026-07-31 08:30');
+  });
+
+  it('falls back to host-local formatting when the offset is null/undefined', () => {
+    expect(ssiDiveDateTimeKey('2026-07-28T12:26:00Z', null)).toBe(ssiDiveDateTimeKey('2026-07-28T12:26:00Z'));
+  });
 });

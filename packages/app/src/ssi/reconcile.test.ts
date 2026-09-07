@@ -3,10 +3,11 @@ import { ssiDiveDateTimeKey, type CanonicalDive } from '@divesend/core';
 import { indexDivelogByDateTime, reconcileDives } from './reconcile';
 import type { StoredDive, SyncState } from '../db/Dive';
 
-function makeCanonicalDive(startTime: string): CanonicalDive {
+function makeCanonicalDive(startTime: string, utcOffsetMinutes?: number | null): CanonicalDive {
   return {
     header: {
       startTime,
+      ...(utcOffsetMinutes === undefined ? {} : { utcOffsetMinutes }),
       maxDepthM: 18,
       gasO2Percent: 21,
       gasHePercent: 0,
@@ -27,7 +28,12 @@ function makeCanonicalDive(startTime: string): CanonicalDive {
   };
 }
 
-function makeDive(id: string, startTime: string, syncState: SyncState = 'notSynced'): StoredDive {
+function makeDive(
+  id: string,
+  startTime: string,
+  syncState: SyncState = 'notSynced',
+  utcOffsetMinutes?: number | null
+): StoredDive {
   return {
     id,
     diveId: id,
@@ -35,7 +41,7 @@ function makeDive(id: string, startTime: string, syncState: SyncState = 'notSync
     maxDepthM: 18,
     durationMinutes: 40,
     computerModel: 'Shearwater Teric',
-    canonicalDive: makeCanonicalDive(startTime),
+    canonicalDive: makeCanonicalDive(startTime, utcOffsetMinutes),
     syncState,
     deviceSerialNumber: null,
     ssiDiveID: null,
@@ -86,6 +92,18 @@ describe('reconcileDives', () => {
     // Returns a new object; the input is untouched (callers persist the copy).
     expect(dive.syncState).toBe('notSynced');
     expect(linked[0]).not.toBe(dive);
+  });
+
+  it('matches a UTC-instant dive against its diver-local SSI datetime, whatever the host timezone', () => {
+    // startTime is true UTC; the Teric was on UTC-4, so SSI stored "2026-07-30 15:07".
+    // The literal record string here does not depend on the test host's zone.
+    const dive = makeDive('teric18', '2026-07-30T19:07:51Z', 'notSynced', -240);
+    const linked = reconcileDives(
+      [dive],
+      [{ odin_user_log_datetime: '2026-07-30 15:07', odin_user_log_id: 900, odin_user_log_nr: 18 }]
+    );
+    expect(linked).toHaveLength(1);
+    expect(linked[0]).toMatchObject({ id: 'teric18', syncState: 'synced', ssiDiveID: 900, ssiDiveNumber: 18 });
   });
 
   it('matches at minute precision, ignoring seconds', () => {

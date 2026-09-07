@@ -53,7 +53,9 @@ export function reconcileDives(
   const linked: StoredDive[] = [];
   for (const dive of dives) {
     if (dive.syncState !== 'notSynced') continue;
-    const link = index.get(ssiDiveDateTimeKey(dive.canonicalDive.header.startTime));
+    const link = index.get(
+      ssiDiveDateTimeKey(dive.canonicalDive.header.startTime, dive.canonicalDive.header.utcOffsetMinutes)
+    );
     if (!link) continue;
     linked.push({
       ...dive,
