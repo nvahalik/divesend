@@ -1,11 +1,16 @@
-// PBKDF2-SHA256 password hashing via Web Crypto. OWASP-recommended iteration count for
-// PBKDF2-SHA256 as of this writing is ~600,000; a per-user random salt defeats rainbow
+// PBKDF2-SHA256 password hashing via Web Crypto. A per-user random salt defeats rainbow
 // tables, and the constant-time comparison in verifyPassword defeats timing attacks on the
 // comparison step itself.
+//
+// Iteration count is pinned to 100_000: the Cloudflare Workers production runtime
+// (BoringSSL) throws `NotSupportedError: iteration counts above 100000 are not supported`,
+// which turns every /signup and /login into a 500. This is below OWASP's current
+// PBKDF2-SHA256 guidance (~600k) but is the platform hard limit; a stronger KDF here
+// (Argon2id / scrypt via WASM) is the follow-up if that ceiling isn't enough.
 
 import { fromBase64, toBase64 } from '../shared/base64';
 
-const PBKDF2_ITERATIONS = 600_000;
+export const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const KEY_LENGTH_BITS = 256;
 
