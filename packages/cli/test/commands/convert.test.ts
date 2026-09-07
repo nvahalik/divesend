@@ -242,7 +242,13 @@ binRun('convert <file>.bin', () => {
     await convert(named);
     const p = stdoutJson();
     expect(p.odin_user_log_divecomputer_name).toBe('Teric');
-    expect(typeof p.odin_user_log_datetime).toBe('string');
+    // startTime decodes to 2026-07-30T19:07:51Z with utcOffsetMinutes -240;
+    // SSI wants the diver's local wall-clock, so the datetime fields are the
+    // -04:00 local time and dive_ref keeps the offset.
+    expect(p.odin_user_log_datetime).toBe('2026-07-30 15:07');
+    expect(p.odin_user_log_date).toBe('2026-07-30');
+    expect(p.odin_user_log_entry_time).toBe('15:07');
+    expect(p.odin_user_log_divecomputer_dive_ref).toBe('2026-07-30T15:07:51.000-04:00_0');
     expect(JSON.parse(p.odin_user_log_diveSamples).length).toBeGreaterThan(0);
   });
 

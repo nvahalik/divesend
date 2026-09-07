@@ -19,7 +19,7 @@ import {
 import { parseDctoolXml } from '@divesend/core/parsers/dctoolXml';
 import { toUddf, parseUddf } from '@divesend/core/parsers/uddf';
 import { detectFormat, type DiveFileFormat } from '@divesend/core/parsers/detectFormat';
-import { ssiDateFields } from '../dateFields.js';
+import { ssiDateFields, localIsoFromUtc } from '../dateFields.js';
 import { decodeRaw } from '../engine/engine.js';
 import { resolveModel } from '../model.js';
 
@@ -147,9 +147,13 @@ async function renderBin(
 
   const payload = transformDive(dive);
   // Same rationale as the dc-xml branch: transformDive formats these with
-  // host-local Date getters, so recompute them from the dive's own
-  // UTC-offset startTime for a timezone-independent result.
-  const df = ssiDateFields(dive.header.startTime);
+  // host-local Date getters, so recompute them deterministically. The engine's
+  // startTime is true UTC ("...Z"); SSI wants the diver's local wall-clock, so
+  // fold header.utcOffsetMinutes back in first (null offset -> string as-is,
+  // for devices whose fields are already local).
+  const df = ssiDateFields(
+    localIsoFromUtc(dive.header.startTime, dive.header.utcOffsetMinutes ?? null),
+  );
   payload.odin_user_log_datetime = df.datetime;
   payload.odin_user_log_date = df.date;
   payload.odin_user_log_entry_time = df.entry_time;
