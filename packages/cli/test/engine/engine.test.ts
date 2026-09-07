@@ -21,6 +21,19 @@ run('decodeRaw', () => {
     expect(dive.rawDataHex).toBe(Buffer.from(bytes).toString('hex'));
   });
 
+  it('emits the Teric UTC offset as its own field, leaving startTime in "Z" UTC', async () => {
+    const dive = await decodeRaw('', 'Teric', bytes);
+    // The Teric records the offset it had configured at dive time; it must be
+    // surfaced, not just folded into startTime.
+    expect(typeof dive.header.utcOffsetMinutes).toBe('number');
+    // Whole-minute offset within the real-world range (-12:00 .. +14:00).
+    expect(Number.isInteger(dive.header.utcOffsetMinutes)).toBe(true);
+    expect(dive.header.utcOffsetMinutes).toBeGreaterThanOrEqual(-12 * 60);
+    expect(dive.header.utcOffsetMinutes).toBeLessThanOrEqual(14 * 60);
+    // startTime is untouched: still true UTC with a trailing Z.
+    expect(dive.header.startTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+
   it('rejects an unknown model with a CliError', async () => {
     await expect(decodeRaw('', 'NoSuchComputer', bytes)).rejects.toBeInstanceOf(CliError);
     await expect(decodeRaw('', 'NoSuchComputer', bytes)).rejects.toThrow('Unrecognized dive computer model');

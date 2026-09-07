@@ -435,6 +435,21 @@ build_dive_json (dc_parser_t *parser, const unsigned char *data, unsigned int si
 		utc_tm.tm_year + 1900, utc_tm.tm_mon + 1, utc_tm.tm_mday,
 		utc_tm.tm_hour, utc_tm.tm_min, utc_tm.tm_sec);
 	cJSON_AddStringToObject (header, "startTime", start_time);
+
+	// The UTC offset the dive computer had configured at dive time (device
+	// minutes east of UTC, DST folded in), kept as its own field rather than
+	// only being folded into startTime above -- startTime stays true "Z" UTC,
+	// and utcOffsetMinutes lets a consumer recover the local wall-clock the
+	// diver actually saw. Only devices that report an offset at all populate
+	// it: as of this writing that is the Shearwater Teric (logversion >= 9);
+	// every other parser leaves dt.timezone == DC_TIMEZONE_NONE and this is
+	// null.
+	if (dt.timezone != DC_TIMEZONE_NONE) {
+		cJSON_AddNumberToObject (header, "utcOffsetMinutes", (double) (dt.timezone / 60));
+	} else {
+		cJSON_AddNullToObject (header, "utcOffsetMinutes");
+	}
+
 	cJSON_AddNumberToObject (header, "maxDepthM", maxdepth);
 	cJSON_AddNumberToObject (header, "gasO2Percent", gasmix.oxygen * 100.0);
 	cJSON_AddNumberToObject (header, "gasHePercent", gasmix.helium * 100.0);
