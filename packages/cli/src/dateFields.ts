@@ -28,6 +28,35 @@ export interface SsiDateFields {
 const ISO_WITH_OFFSET =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
+/**
+ * Turn a true-UTC ISO string (`"...Z"`) plus a UTC-offset in minutes into the
+ * offset-bearing *local* ISO string `ssiDateFields` expects
+ * (`YYYY-MM-DDTHH:MM:SS±HH:MM`) — so SSI stores the wall-clock the diver saw.
+ *
+ * `offsetMinutes === null` returns the input untouched: that is the
+ * timezone-less case (a decoder whose `startTime` fields are already the local
+ * wall-clock, merely labelled `Z`), where no shift is wanted.
+ *
+ * Uses epoch math and `getUTC*` getters only, so the result never depends on
+ * the host timezone.
+ */
+export function localIsoFromUtc(utcIso: string, offsetMinutes: number | null): string {
+  if (offsetMinutes === null) return utcIso;
+
+  const shifted = new Date(new Date(utcIso).getTime() + offsetMinutes * 60_000);
+  if (Number.isNaN(shifted.getTime())) return utcIso; // let ssiDateFields report the bad input
+
+  const abs = Math.abs(offsetMinutes);
+  const sign = offsetMinutes < 0 ? '-' : '+';
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const offset = `${sign}${p(Math.trunc(abs / 60))}:${p(abs % 60)}`;
+
+  return (
+    `${shifted.getUTCFullYear()}-${p(shifted.getUTCMonth() + 1)}-${p(shifted.getUTCDate())}` +
+    `T${p(shifted.getUTCHours())}:${p(shifted.getUTCMinutes())}:${p(shifted.getUTCSeconds())}${offset}`
+  );
+}
+
 export function ssiDateFields(isoWithOffset: string): SsiDateFields {
   const m = ISO_WITH_OFFSET.exec(isoWithOffset.trim());
   if (!m) {

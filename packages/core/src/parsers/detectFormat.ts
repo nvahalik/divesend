@@ -1,4 +1,4 @@
-export type DiveFileFormat = 'fit' | 'sw-xml' | 'dc-xml' | 'uddf';
+export type DiveFileFormat = 'fit' | 'sw-xml' | 'dc-xml' | 'uddf' | 'bin';
 
 /** Sniff a dive file's format from its leading bytes. `null` if unrecognised. */
 export function detectFormat(bytes: Uint8Array): DiveFileFormat | null {

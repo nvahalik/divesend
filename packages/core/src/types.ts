@@ -10,7 +10,14 @@
 // field requires touching the C side.
 
 export interface DiveHeader {
-  startTime: string; // ISO 8601, e.g. "2026-08-22T11:42:10Z"
+  startTime: string; // ISO 8601, e.g. "2026-08-22T11:42:10Z" -- always true UTC ("Z")
+  /**
+   * Minutes east of UTC the dive computer had configured at dive time (DST folded
+   * in), kept separate from `startTime` so the diver's local wall-clock is
+   * recoverable. `null`/absent when the device reports no offset -- as of this
+   * writing only the Shearwater Teric (logversion >= 9) populates it.
+   */
+  utcOffsetMinutes?: number | null;
   maxDepthM: number;
   gasO2Percent: number;
   gasHePercent: number;

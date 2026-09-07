@@ -19,11 +19,13 @@ import {
 import { parseDctoolXml } from '@divesend/core/parsers/dctoolXml';
 import { toUddf, parseUddf } from '@divesend/core/parsers/uddf';
 import { detectFormat, type DiveFileFormat } from '@divesend/core/parsers/detectFormat';
-import { ssiDateFields } from '../dateFields.js';
+import { ssiDateFields, localIsoFromUtc } from '../dateFields.js';
+import { decodeRaw } from '../engine/engine.js';
+import { resolveModel } from '../model.js';
 
 export type Target = 'ssi' | 'uddf';
 
-const FORMATS: readonly DiveFileFormat[] = ['fit', 'sw-xml', 'dc-xml', 'uddf'];
+const FORMATS: readonly DiveFileFormat[] = ['fit', 'sw-xml', 'dc-xml', 'uddf', 'bin'];
 const TARGETS: readonly Target[] = ['ssi', 'uddf'];
 
 export interface ConvertOptions {
@@ -33,6 +35,8 @@ export interface ConvertOptions {
   to?: string;
   /** Write to this path instead of stdout. */
   output?: string;
+  /** Dive computer product name, used only for a `.bin` input. */
+  model?: string;
 }
 
 /** True when no dive data is available: no file given and nothing piped in. */
@@ -53,7 +57,7 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
     fail(`Unknown --to "${options.to}". Expected "ssi" or "uddf".`);
   }
   if (options.from != null && !FORMATS.includes(options.from as DiveFileFormat)) {
-    fail(`Unknown --from "${options.from}". Expected "fit", "sw-xml", "dc-xml", or "uddf".`);
+    fail(`Unknown --from "${options.from}". Expected "fit", "sw-xml", "dc-xml", "uddf", or "bin".`);
   }
 
   const bytes = await readInput(file);
@@ -62,12 +66,21 @@ export async function convert(file?: string, options: ConvertOptions = {}): Prom
     fail('The input is empty. Pass a dive file, or pipe one on stdin.');
   }
 
-  const from = (options.from as DiveFileFormat | undefined) ?? detectFormat(buf) ?? undefined;
+  const isBinPath = !!file && file !== '-' && file.toLowerCase().endsWith('.bin');
+  const from =
+    (options.from as DiveFileFormat | undefined) ??
+    (isBinPath ? 'bin' : undefined) ??
+    detectFormat(buf) ??
+    undefined;
   if (!from) {
-    fail('Could not detect the input format. Pass --from with "fit", "sw-xml", "dc-xml", or "uddf".');
+    fail(
+      'Could not detect the input format. Pass --from with "fit", "sw-xml", "dc-xml", "uddf", or "bin".',
+    );
   }
 
-  writeOutput(render(from, to, buf), options.output);
+  const output =
+    from === 'bin' ? await renderBin(file, to, buf, options.model) : render(from, to, buf);
+  writeOutput(output, options.output);
 }
 
 const json = (payload: unknown): string => JSON.stringify(payload, null, 2);
@@ -114,6 +127,33 @@ function render(from: DiveFileFormat, to: Target, buf: Buffer): string {
   // them deterministically from that wall-clock -- matches
   // shearwater_transformers.to_ssi_payload for the real fixture.
   const df = ssiDateFields(dive.header.startTime);
+  payload.odin_user_log_datetime = df.datetime;
+  payload.odin_user_log_date = df.date;
+  payload.odin_user_log_entry_time = df.entry_time;
+  payload.odin_user_log_divecomputer_dive_ref = df.dive_ref;
+  return json(payload);
+}
+
+/** Decode a raw `.bin` via the wasm engine, then serialise like the other formats. */
+async function renderBin(
+  file: string | undefined,
+  to: Target,
+  buf: Buffer,
+  model: string | undefined,
+): Promise<string> {
+  const { vendor, product } = resolveModel({ model, filePath: file });
+  const dive = await decodeRaw(vendor, product, new Uint8Array(buf));
+  if (to === 'uddf') return toUddf(dive);
+
+  const payload = transformDive(dive);
+  // Same rationale as the dc-xml branch: transformDive formats these with
+  // host-local Date getters, so recompute them deterministically. The engine's
+  // startTime is true UTC ("...Z"); SSI wants the diver's local wall-clock, so
+  // fold header.utcOffsetMinutes back in first (null offset -> string as-is,
+  // for devices whose fields are already local).
+  const df = ssiDateFields(
+    localIsoFromUtc(dive.header.startTime, dive.header.utcOffsetMinutes ?? null),
+  );
   payload.odin_user_log_datetime = df.datetime;
   payload.odin_user_log_date = df.date;
   payload.odin_user_log_entry_time = df.entry_time;

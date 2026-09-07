@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { cac } from 'cac';
 import { printError } from './io.js';
 import { convert } from './commands/convert.js';
+import { inspect } from './commands/inspect.js';
 import { list, get, push, create, update } from './commands/logbook.js';
 import { login, logout } from './commands/login.js';
 
@@ -24,9 +25,10 @@ const DESCRIPTION = [
   'Offline converter and logbook client for divers who use SSI.',
   '',
   "Turn a dive-computer export into SSI's save_divelog JSON (or UDDF): Garmin FIT",
-  'files, Shearwater Cloud XML, and libdivecomputer "dctool parse" XML, with the',
-  'format detected automatically. Then talk to the SSI logbook API directly to',
-  'list, inspect, create, and update dives.',
+  'files, Shearwater Cloud XML, libdivecomputer "dctool parse" XML, and the raw',
+  '.bin a dive computer download produced, with the format detected automatically.',
+  'Then talk to the SSI logbook API directly to list, inspect, create, and update',
+  'dives.',
   '',
   'Conversions are fully offline. Downloading dives from a computer over Bluetooth',
   'is out of scope -- see the DiveSend web app for that.',
@@ -40,16 +42,28 @@ cli
   .command('convert [file]', 'Convert a dive file to SSI save_divelog JSON or UDDF.')
   .option(
     '--from <format>',
-    'Input format: fit, sw-xml, or dc-xml. Auto-detected from the file when omitted.',
+    'Input format: fit, sw-xml, dc-xml, uddf, or bin. Auto-detected from the file when omitted.',
   )
   .option('--to <target>', 'Output format: ssi or uddf.', { default: 'ssi' })
   .option('-o, --output <path>', 'Write to a file instead of stdout.')
+  .option('--model <name>', 'For a .bin input: the dive computer product name (guessed from the filename otherwise).')
   .example('  $ divesend convert dive.fit -o dive.ssi.json')
   .example('  $ divesend convert shearwater-export.xml -o dive.ssi.json')
   .example('  $ divesend convert dive.dctool.xml --to uddf -o dive.uddf')
+  .example('  $ divesend convert Teric-2026-07-30T19-07-51Z.bin -o dive.ssi.json')
   .example('  $ cat dive.fit | divesend convert --to uddf')
-  .action((file: string | undefined, options: { from?: string; to?: string; output?: string }) =>
-    convert(file, { from: options.from, to: options.to, output: options.output }),
+  .action((file: string | undefined, options: { from?: string; to?: string; output?: string; model?: string }) =>
+    convert(file, { from: options.from, to: options.to, output: options.output, model: options.model }),
+  );
+
+cli
+  .command('inspect [file]', 'Decode a raw dive .bin file and print what libdivecomputer sees.')
+  .option('--model <name>', 'Dive computer product name (e.g. "Teric"). Guessed from the filename when omitted.')
+  .option('-o, --output <path>', 'Write to a file instead of stdout.')
+  .example('  $ divesend inspect Teric-2026-07-30T19-07-51Z.bin')
+  .example('  $ divesend inspect dump.bin --model "Perdix 2" -o dive.json')
+  .action((file: string | undefined, options: { model?: string; output?: string }) =>
+    inspect(file, { model: options.model, output: options.output }),
   );
 
 cli
