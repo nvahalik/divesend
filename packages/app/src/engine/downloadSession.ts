@@ -23,7 +23,17 @@ import {
   FINGERPRINT_STORAGE_PREFIX,
   setDiveCallbacks,
   setProgressCallback,
+  setLogCallback,
 } from './webble';
+import {
+  startAttempt,
+  markStage,
+  setAttemptDevice,
+  setAttemptDeviceName,
+  finishAttempt,
+  pushDiagLog,
+  classifyError,
+} from './diagnostics';
 import { recordDeviceSync, getDeviceSyncRecord } from './deviceSyncHistory';
 import { toStoredDive, type RawDiveSource } from '../db/Dive';
 import { upsertDive } from '../db/db';
@@ -105,6 +115,7 @@ export function useDownloadSession(): DownloadSessionState {
 }
 
 function appendLog(msg: string): void {
+  pushDiagLog('js', msg);
   setState((s) => ({ log: [...s.log, msg] }));
 }
 
@@ -140,6 +151,8 @@ export async function startDownload(): Promise<void> {
   let deviceForHistory: { id: string; name: string } | null = null;
 
   try {
+    const diagCode = startAttempt();
+    void diagCode; // returned for callers that surface it; not needed here
     await waitForEngineReady();
     // Tears down any prior C-side session before opening a new one -- see
     // webble/main.js's connect() and webble/NOTES.md Round 4 for why this
@@ -147,6 +160,7 @@ export async function startDownload(): Promise<void> {
     await closeSession();
 
     announce('Waiting for device selection…');
+    markStage('device_select');
     const knownServices = VENDOR_BLE_PROFILES.map((p) => p.service);
     const device = await navigator.bluetooth.requestDevice({
       // One filter per known service, plus any EXTRA_ADVERTISED_SERVICE_UUIDS
@@ -166,11 +180,14 @@ export async function startDownload(): Promise<void> {
       optionalServices: knownServices,
     });
     deviceForHistory = { id: device.id, name: device.name ?? 'Unknown device' };
+    setAttemptDeviceName(device.name ?? '');
     announce('Selected device: ' + device.name);
 
+    markStage('gatt_connect');
     const server = await device.gatt!.connect();
 
     let matched: { profile: (typeof VENDOR_BLE_PROFILES)[number]; service: BluetoothRemoteGATTService } | null = null;
+    markStage('service_probe');
     for (const profile of VENDOR_BLE_PROFILES) {
       try {
         const service = await server.getPrimaryService(profile.service);
@@ -184,11 +201,13 @@ export async function startDownload(): Promise<void> {
         // A different failure (e.g. the device disconnected mid-probe) --
         // don't silently reinterpret it as "no vendor matched."
         announce('GATT error while identifying the device: ' + String(e));
+        finishAttempt('error', 'gatt_probe:' + (e instanceof DOMException ? e.name : 'error'), importedCount);
         return;
       }
     }
     if (!matched) {
       announce('Connected, but none of the known vendor services were found on this device.');
+      finishAttempt('error', 'no_vendor_service', importedCount);
       return;
     }
     announce('Resolved vendor: ' + matched.profile.vendor);
@@ -196,22 +215,28 @@ export async function startDownload(): Promise<void> {
     const rx = await matched.service.getCharacteristic(matched.profile.rx);
     const tx = await matched.service.getCharacteristic(matched.profile.tx);
     await installTransport(rx, tx);
+    setLogCallback((level, line) => pushDiagLog('dc', line, String(level)));
+    markStage('transport_open');
     announce('Connected and subscribed to notifications.');
 
     const openStatus = await openTransport();
     if (openStatus !== 0) {
       announce('webble_open failed with status ' + openStatus);
+      finishAttempt('error', 'webble_open:' + openStatus, importedCount);
       return;
     }
 
+    markStage('open_device');
     const openDeviceStatus = await openDevice(device.name ?? '');
     if (openDeviceStatus !== 0) {
       announce('webble_open_device failed with status ' + openDeviceStatus + ' (unrecognized device name?)');
+      finishAttempt('error', 'webble_open_device:' + openDeviceStatus, importedCount);
       return;
     }
 
     const vendor = getDeviceVendor();
     const product = getDeviceProduct();
+    setAttemptDevice(vendor, product, deviceMatchIsFallback());
     announce('Device session opened: ' + vendor + ' ' + product);
     if (deviceMatchIsFallback()) {
       appendLog(
@@ -237,6 +262,7 @@ export async function startDownload(): Promise<void> {
         try {
           await upsertDive(toStoredDive(dive, device.id, serial, rawSourceFromDive(dive)));
           importedCount += 1;
+          markStage('persist');
           setState((s) => ({
             diveCount: importedCount,
             totalImported: s.totalImported + 1,
@@ -259,9 +285,11 @@ export async function startDownload(): Promise<void> {
     const storedFingerprint = readLocalStorage(fingerprintKey) ?? '';
 
     announce(storedFingerprint ? 'Checking for new dives…' : 'Downloading dives…');
+    markStage('download');
     const downloadResult = await downloadNewDives(storedFingerprint);
     if (downloadResult < 0) {
       announce('webble_download_new_dives failed with status ' + downloadResult);
+      finishAttempt('error', 'download:' + downloadResult, importedCount);
       return;
     }
     announce(downloadResult === 0 ? 'Up to date -- no new dives.' : 'Downloaded ' + downloadResult + ' new dive(s).');
@@ -283,7 +311,11 @@ export async function startDownload(): Promise<void> {
       lastSyncedAt: new Date().toISOString(),
       lastSyncDiveCount: importedCount,
     });
+
+    finishAttempt(downloadResult === 0 ? 'no_new_dives' : 'success', null, importedCount);
   } catch (e) {
+    const cancelled = e instanceof DOMException && e.name === 'NotFoundError' && !deviceForHistory;
+    finishAttempt(cancelled ? 'user_cancelled' : 'error', cancelled ? '' : classifyError(e), importedCount);
     announce('Error: ' + String(e));
     // Still record the attempt if we got far enough to identify the device --
     // a diver checking "did it try?" after an error shouldn't see nothing.
