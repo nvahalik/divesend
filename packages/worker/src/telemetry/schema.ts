@@ -49,6 +49,18 @@ const STRING_MAX: Record<string, number> = {
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const clampStr = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '');
 
+/** Truncates to `maxBytes` UTF-8 bytes, not UTF-16 code units. Analytics
+ *  Engine's ~5 KB per-data-point blob budget is byte-based, and an over-budget
+ *  data point is rejected outright — a logTail of multi-byte characters that
+ *  passed a code-unit clamp could be up to 3x over and lose the whole event.
+ *  Truncation is backed off to the last whole character so the stored tail is
+ *  never left with a mangled trailing code point. */
+function clampBytes(s: string, maxBytes: number): string {
+  const bytes = new TextEncoder().encode(s);
+  if (bytes.length <= maxBytes) return s;
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, maxBytes)).replace(/�$/, '');
+}
+
 export function validateConnectEvent(body: unknown): ConnectEventPayload | null {
   if (typeof body !== 'object' || body === null) return null;
   const b = body as Record<string, unknown>;
@@ -84,7 +96,7 @@ export function validateConnectEvent(body: unknown): ConnectEventPayload | null 
     appVersion: clampStr(b.appVersion, STRING_MAX.appVersion),
   };
   if (outcome === 'error' && typeof b.logTail === 'string' && b.logTail.length > 0) {
-    event.logTail = b.logTail.slice(0, MAX_LOG_TAIL);
+    event.logTail = clampBytes(b.logTail, MAX_LOG_TAIL);
   }
   return event;
 }

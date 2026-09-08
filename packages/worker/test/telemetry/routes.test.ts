@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import worker from '../../src/index';
 import { toDataPoint, validateConnectEvent } from '../../src/telemetry/schema';
@@ -54,9 +54,19 @@ describe('validateConnectEvent', () => {
   it('rejects a bad outcome enum', () => {
     expect(validateConnectEvent({ ...GOOD, outcome: 'exploded' })).toBeNull();
   });
-  it('clamps an oversize logTail to 2048 chars', () => {
+  it('clamps an oversize logTail to 2048 bytes', () => {
     const ev = validateConnectEvent({ ...GOOD, logTail: 'x'.repeat(5000) })!;
-    expect(ev.logTail!.length).toBe(2048);
+    expect(new TextEncoder().encode(ev.logTail!).length).toBeLessThanOrEqual(2048);
+    expect(ev.logTail!.length).toBe(2048); // pure ASCII: bytes == code units
+  });
+
+  it('clamps by BYTES, not UTF-16 code units (AE blob budget is byte-based)', () => {
+    // 2000 chars of 3-byte characters = 6000 bytes; a code-unit clamp would
+    // have let ~6 KB through and the whole data point would be dropped.
+    const ev = validateConnectEvent({ ...GOOD, logTail: '中'.repeat(2000) })!;
+    expect(new TextEncoder().encode(ev.logTail!).length).toBeLessThanOrEqual(2048);
+    expect(ev.logTail!.length).toBeGreaterThan(0);
+    expect(ev.logTail).not.toContain('�'); // no mangled trailing code point
   });
   it('drops logTail when outcome !== error', () => {
     const ev = validateConnectEvent({ ...GOOD, outcome: 'success', logTail: 'stuff' })!;
@@ -85,9 +95,25 @@ describe('POST /api/telemetry/connect', () => {
     const res = await post({ ...GOOD, stage: 'nope' });
     expect(res.status).toBe(400);
   });
-  it('accepts a valid event (200 { ok: true })', async () => {
+  it('accepts a valid event (200 { ok: true }) and writes exactly one data point', async () => {
+    const spy = vi.spyOn(env.CONNECT_TELEMETRY, 'writeDataPoint');
     const res = await post(GOOD);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toEqual(toDataPoint(validateConnectEvent(GOOD)!));
+    spy.mockRestore();
+  });
+
+  it('still 200s when the Analytics Engine write throws', async () => {
+    const spy = vi.spyOn(env.CONNECT_TELEMETRY, 'writeDataPoint').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await post(GOOD);
+    expect(res.status).toBe(200);
+    expect(errSpy).toHaveBeenCalled(); // observable, not silently swallowed
+    spy.mockRestore();
+    errSpy.mockRestore();
   });
 });
