@@ -9,6 +9,8 @@
 // user-set Bluetooth device name anywhere it can leave the device except the
 // user-initiated export (which is explicitly labelled).
 
+import { readLocalStorage, writeLocalStorage } from '../lib/storage';
+
 export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 
 export const RING_MAX_ENTRIES = 4000;
@@ -144,4 +146,208 @@ export function buildDiagnosticsText(meta: DiagnosticsTextMeta, entries: DiagLog
     ...lines,
     '',
   ].join('\n');
+}
+
+// ==========================================================================
+// Attempt lifecycle + opt-in + telemetry
+// ==========================================================================
+
+export type DiagStage =
+  | 'device_select'
+  | 'gatt_connect'
+  | 'service_probe'
+  | 'transport_open'
+  | 'open_device'
+  | 'download'
+  | 'persist';
+
+export type DiagOutcome = 'success' | 'no_new_dives' | 'user_cancelled' | 'error';
+export type DiagOptIn = 'granted' | 'denied' | 'unset';
+
+export const DIAG_OPTIN_KEY = 'divesend-diagnostics-optin';
+const TELEMETRY_ENDPOINT = '/api/telemetry/connect';
+const LOG_TAIL_MAX = 2048;
+
+export function getDiagOptIn(): DiagOptIn {
+  const v = readLocalStorage(DIAG_OPTIN_KEY);
+  return v === 'granted' || v === 'denied' ? v : 'unset';
+}
+
+export function setDiagOptIn(v: 'granted' | 'denied'): void {
+  writeLocalStorage(DIAG_OPTIN_KEY, v);
+}
+
+interface AttemptState {
+  code: string;
+  startedAt: number;
+  stageAt: Partial<Record<DiagStage, number>>;
+  lastStage: DiagStage;
+  vendor: string;
+  product: string;
+  fallbackMatch: boolean;
+  deviceName: string;
+  outcome: DiagOutcome | null;
+  errorCode: string;
+  diveCount: number;
+  finishedAt: number | null;
+}
+
+function freshAttempt(code: string): AttemptState {
+  return {
+    code,
+    startedAt: Date.now(),
+    stageAt: {},
+    lastStage: 'device_select',
+    vendor: '',
+    product: '',
+    fallbackMatch: false,
+    deviceName: '',
+    outcome: null,
+    errorCode: '',
+    diveCount: 0,
+    finishedAt: null,
+  };
+}
+
+let attempt: AttemptState = freshAttempt(makeDiagnosticCode());
+let lastAttempt: AttemptState | null = null;
+
+export function startAttempt(): string {
+  resetDiagLog();
+  attempt = freshAttempt(makeDiagnosticCode());
+  attempt.stageAt.device_select = Date.now();
+  return attempt.code;
+}
+
+export function markStage(stage: DiagStage): void {
+  attempt.lastStage = stage;
+  if (attempt.stageAt[stage] === undefined) attempt.stageAt[stage] = Date.now();
+}
+
+export function setAttemptDevice(vendor: string, product: string, fallbackMatch: boolean): void {
+  attempt.vendor = vendor;
+  attempt.product = product;
+  attempt.fallbackMatch = fallbackMatch;
+}
+
+export function setAttemptDeviceName(name: string): void {
+  attempt.deviceName = name;
+}
+
+function timingsFor(a: AttemptState): DiagTimings {
+  const end = a.finishedAt ?? Date.now();
+  const span = (from?: number, to?: number): number => (from !== undefined && to !== undefined ? Math.max(0, to - from) : 0);
+  return {
+    totalMs: Math.max(0, end - a.startedAt),
+    gattMs: span(a.stageAt.gatt_connect, a.stageAt.service_probe ?? a.stageAt.transport_open),
+    openDeviceMs: span(a.stageAt.open_device, a.stageAt.download ?? end),
+    downloadMs: span(a.stageAt.download, end),
+  };
+}
+
+export function currentTimings(): DiagTimings {
+  return timingsFor(attempt);
+}
+
+export function currentAttemptMeta(): { code: string; vendor: string; product: string; fallbackMatch: boolean } {
+  return { code: attempt.code, vendor: attempt.vendor, product: attempt.product, fallbackMatch: attempt.fallbackMatch };
+}
+
+export function getLastAttemptOutcome(): DiagOutcome | null {
+  return lastAttempt?.outcome ?? null;
+}
+
+export function classifyError(e: unknown): string {
+  if (typeof DOMException !== 'undefined' && e instanceof DOMException) return `dom:${e.name}`;
+  if (e instanceof Error) return 'exception';
+  return 'unknown';
+}
+
+function scrub(text: string, deviceName: string): string {
+  if (!deviceName) return text;
+  return text.split(deviceName).join('<device-name>');
+}
+
+export interface ConnectEventPayload {
+  diagnosticCode: string;
+  outcome: DiagOutcome;
+  stage: DiagStage;
+  errorCode: string;
+  vendor: string;
+  product: string;
+  fallbackMatch: boolean;
+  diveCount: number;
+  totalMs: number;
+  gattMs: number;
+  openDeviceMs: number;
+  downloadMs: number;
+  browserName: string;
+  browserVersion: string;
+  osName: string;
+  appVersion: string;
+  logTail?: string;
+}
+
+function buildConnectEventFrom(a: AttemptState): ConnectEventPayload {
+  const ua = currentUA();
+  const t = timingsFor(a);
+  const payload: ConnectEventPayload = {
+    diagnosticCode: a.code,
+    outcome: a.outcome ?? 'error',
+    stage: a.lastStage,
+    errorCode: a.outcome === 'error' ? a.errorCode : '',
+    vendor: a.vendor,
+    product: a.product,
+    fallbackMatch: a.fallbackMatch,
+    diveCount: a.diveCount,
+    totalMs: t.totalMs,
+    gattMs: t.gattMs,
+    openDeviceMs: t.openDeviceMs,
+    downloadMs: t.downloadMs,
+    browserName: ua.browserName,
+    browserVersion: ua.browserVersion,
+    osName: ua.osName,
+    appVersion: APP_VERSION,
+  };
+  if (payload.outcome === 'error') {
+    const tail = getDiagLog()
+      .map((e) => `+${e.t}ms [${e.src}${e.level ? '/' + e.level : ''}] ${e.line}`)
+      .join('\n');
+    payload.logTail = scrub(tail, a.deviceName).slice(-LOG_TAIL_MAX);
+  }
+  return payload;
+}
+
+/** Shape a payload from the *current* attempt (call after finishAttempt). */
+export function buildConnectEvent(): ConnectEventPayload {
+  return buildConnectEventFrom(lastAttempt ?? attempt);
+}
+
+function post(payload: ConnectEventPayload): void {
+  try {
+    void fetch(TELEMETRY_ENDPOINT, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  } catch {
+    // fetch itself threw (very old engine / test env without fetch) — ignore.
+  }
+}
+
+export function finishAttempt(outcome: DiagOutcome, errorCode: string | null, diveCount: number): void {
+  attempt.outcome = outcome;
+  attempt.errorCode = errorCode ?? '';
+  attempt.diveCount = diveCount;
+  attempt.finishedAt = Date.now();
+  lastAttempt = attempt;
+  if (getDiagOptIn() === 'granted') post(buildConnectEventFrom(attempt));
+}
+
+/** Post the most recently finished attempt's event — the opt-in card calls
+ *  this right after setDiagOptIn('granted') so the failure that triggered the
+ *  card is the first thing reported. */
+export function sendLastConnectEvent(): void {
+  if (lastAttempt && getDiagOptIn() === 'granted') post(buildConnectEventFrom(lastAttempt));
 }
