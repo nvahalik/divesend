@@ -33,6 +33,7 @@ import {
   finishAttempt,
   pushDiagLog,
   classifyError,
+  recordGuardRejection,
 } from './diagnostics';
 import { recordDeviceSync, getDeviceSyncRecord } from './deviceSyncHistory';
 import { toStoredDive, type RawDiveSource } from '../db/Dive';
@@ -133,10 +134,17 @@ function announce(msg: string): void {
 export async function startDownload(): Promise<void> {
   if (state.connecting) {
     appendLog('A download is already in progress.');
+    // NOT startAttempt() -- that resets the ring buffer and would destroy the
+    // in-flight attempt's log. This records the rejection standalone.
+    recordGuardRejection('already_running');
     return;
   }
   if (!navigator.bluetooth) {
     appendLog('Web Bluetooth is not available in this browser.');
+    // Nothing is in flight here, so a real attempt is the honest shape: the
+    // spec wants one event per startDownload() call, including this one.
+    startAttempt();
+    finishAttempt('error', 'bluetooth_unavailable', 0);
     return;
   }
 

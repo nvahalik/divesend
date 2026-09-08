@@ -12,6 +12,8 @@ const { diag, webble } = vi.hoisted(() => ({
     setAttemptDeviceName: vi.fn(),
     finishAttempt: vi.fn(),
     pushDiagLog: vi.fn(),
+    recordGuardRejection: vi.fn(),
+    classifyError: vi.fn((e: unknown) => (e instanceof Error ? 'exception' : 'unknown')),
   },
   webble: {
     waitForEngineReady: vi.fn().mockResolvedValue(undefined),
@@ -75,5 +77,49 @@ describe('startDownload diagnostics wiring', () => {
     );
     await startDownload();
     expect(diag.finishAttempt.mock.calls[0][0]).toBe('user_cancelled');
+  });
+
+  it('maps a generic thrown Error to error/exception via classifyError', async () => {
+    (navigator.bluetooth!.requestDevice as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    await startDownload();
+    expect(diag.finishAttempt).toHaveBeenCalledTimes(1);
+    expect(diag.finishAttempt.mock.calls[0]).toEqual(['error', 'exception', 0]);
+  });
+
+  it('reports a post-persist download failure as exactly one error attempt', async () => {
+    webble.downloadNewDives.mockResolvedValueOnce(-3);
+    await startDownload();
+    expect(diag.finishAttempt).toHaveBeenCalledTimes(1);
+    expect(diag.finishAttempt.mock.calls[0][0]).toBe('error');
+    expect(diag.finishAttempt.mock.calls[0][1]).toContain('download:');
+  });
+
+  it('reports bluetooth_unavailable as its own attempt when Web Bluetooth is missing', async () => {
+    vi.stubGlobal('navigator', {});
+    await startDownload();
+    expect(diag.startAttempt).toHaveBeenCalledTimes(1);
+    expect(diag.finishAttempt).toHaveBeenCalledTimes(1);
+    expect(diag.finishAttempt.mock.calls[0]).toEqual(['error', 'bluetooth_unavailable', 0]);
+  });
+
+  it('reports already_running without disturbing the in-flight attempt', async () => {
+    let release: (v: unknown) => void = () => {};
+    (navigator.bluetooth!.requestDevice as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const first = startDownload();
+    // Let the first call get past its guards and into requestDevice.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await startDownload(); // rejected by the state.connecting guard
+    expect(diag.recordGuardRejection).toHaveBeenCalledWith('already_running');
+    expect(diag.startAttempt).toHaveBeenCalledTimes(1); // ring buffer untouched
+
+    release(new DOMException('cancelled', 'NotFoundError'));
+    await first.catch(() => {});
   });
 });

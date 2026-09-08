@@ -168,13 +168,30 @@ export const DIAG_OPTIN_KEY = 'divesend-diagnostics-optin';
 const TELEMETRY_ENDPOINT = '/api/telemetry/connect';
 const LOG_TAIL_MAX = 2048;
 
+// In-memory shadow of the persisted preference. localStorage writes can fail
+// outright (Safari private browsing, storage disabled) -- without this, a user
+// who just clicked "Share report" would have their consent silently voided on
+// the very next read, so nothing would ever be sent even though the UI said it
+// was. The in-memory copy keeps consent honest for the rest of the session.
+let memOptIn: DiagOptIn | null = null;
+
+/** Test-only: drops the in-memory consent shadow so a suite can start from a
+ *  clean slate after clearing localStorage. */
+export function __resetDiagOptInCacheForTests(): void {
+  memOptIn = null;
+}
+
 export function getDiagOptIn(): DiagOptIn {
+  if (memOptIn !== null) return memOptIn;
   const v = readLocalStorage(DIAG_OPTIN_KEY);
   return v === 'granted' || v === 'denied' ? v : 'unset';
 }
 
-export function setDiagOptIn(v: 'granted' | 'denied'): void {
-  writeLocalStorage(DIAG_OPTIN_KEY, v);
+/** Returns false if the preference could not be persisted (it still applies
+ *  for this session -- see memOptIn). */
+export function setDiagOptIn(v: 'granted' | 'denied'): boolean {
+  memOptIn = v;
+  return writeLocalStorage(DIAG_OPTIN_KEY, v);
 }
 
 interface AttemptState {
@@ -186,6 +203,11 @@ interface AttemptState {
   product: string;
   fallbackMatch: boolean;
   deviceName: string;
+  /** markStage('persist') fires once per dive from inside the download call, so
+   *  it must not be allowed to claim `lastStage` -- a download that then fails
+   *  failed at 'download', not at 'persist'. Recorded separately and only
+   *  reported as the stage for a non-error outcome. */
+  persistReached: boolean;
   outcome: DiagOutcome | null;
   errorCode: string;
   diveCount: number;
@@ -202,6 +224,7 @@ function freshAttempt(code: string): AttemptState {
     product: '',
     fallbackMatch: false,
     deviceName: '',
+    persistReached: false,
     outcome: null,
     errorCode: '',
     diveCount: 0,
@@ -209,8 +232,15 @@ function freshAttempt(code: string): AttemptState {
   };
 }
 
-let attempt: AttemptState = freshAttempt(makeDiagnosticCode());
+// Lazily created: building it at module load would call crypto.getRandomValues
+// during the import graph, so a missing/blocked `crypto` would take down the
+// whole app rather than just the diagnostics feature.
+let attempt: AttemptState | null = null;
 let lastAttempt: AttemptState | null = null;
+
+function ensureAttempt(): AttemptState {
+  return (attempt ??= freshAttempt(makeDiagnosticCode()));
+}
 
 export function startAttempt(): string {
   resetDiagLog();
@@ -220,18 +250,23 @@ export function startAttempt(): string {
 }
 
 export function markStage(stage: DiagStage): void {
-  attempt.lastStage = stage;
-  if (attempt.stageAt[stage] === undefined) attempt.stageAt[stage] = Date.now();
+  const a = ensureAttempt();
+  // Timestamps are recorded for every stage (timings need them), but 'persist'
+  // never claims lastStage -- see AttemptState.persistReached.
+  if (stage === 'persist') a.persistReached = true;
+  else a.lastStage = stage;
+  if (a.stageAt[stage] === undefined) a.stageAt[stage] = Date.now();
 }
 
 export function setAttemptDevice(vendor: string, product: string, fallbackMatch: boolean): void {
-  attempt.vendor = vendor;
-  attempt.product = product;
-  attempt.fallbackMatch = fallbackMatch;
+  const a = ensureAttempt();
+  a.vendor = vendor;
+  a.product = product;
+  a.fallbackMatch = fallbackMatch;
 }
 
 export function setAttemptDeviceName(name: string): void {
-  attempt.deviceName = name;
+  ensureAttempt().deviceName = name;
 }
 
 function timingsFor(a: AttemptState): DiagTimings {
@@ -246,11 +281,12 @@ function timingsFor(a: AttemptState): DiagTimings {
 }
 
 export function currentTimings(): DiagTimings {
-  return timingsFor(attempt);
+  return timingsFor(ensureAttempt());
 }
 
 export function currentAttemptMeta(): { code: string; vendor: string; product: string; fallbackMatch: boolean } {
-  return { code: attempt.code, vendor: attempt.vendor, product: attempt.product, fallbackMatch: attempt.fallbackMatch };
+  const a = ensureAttempt();
+  return { code: a.code, vendor: a.vendor, product: a.product, fallbackMatch: a.fallbackMatch };
 }
 
 export function getLastAttemptOutcome(): DiagOutcome | null {
@@ -294,7 +330,9 @@ function buildConnectEventFrom(a: AttemptState): ConnectEventPayload {
   const payload: ConnectEventPayload = {
     diagnosticCode: a.code,
     outcome: a.outcome ?? 'error',
-    stage: a.lastStage,
+    // 'persist' is only meaningful as a terminal stage for a run that didn't
+    // fail; on an error the stage is wherever the failing call actually was.
+    stage: a.persistReached && a.outcome !== 'error' ? 'persist' : a.lastStage,
     errorCode: a.outcome === 'error' ? a.errorCode : '',
     vendor: a.vendor,
     product: a.product,
@@ -310,17 +348,24 @@ function buildConnectEventFrom(a: AttemptState): ConnectEventPayload {
     appVersion: APP_VERSION,
   };
   if (payload.outcome === 'error') {
-    const tail = getDiagLog()
+    const raw = getDiagLog()
       .map((e) => `+${e.t}ms [${e.src}${e.level ? '/' + e.level : ''}] ${e.line}`)
       .join('\n');
-    payload.logTail = scrub(tail, a.deviceName).slice(-LOG_TAIL_MAX);
+    // A DC_LOGLEVEL_ALL tail is full of packet hex dumps, which can carry the
+    // device serial and raw dive-profile bytes -- neither may ever leave the
+    // device. Redact long hex runs from the TRANSMITTED tail only; the local
+    // export (buildDiagnosticsText) stays full-fidelity for the user's own
+    // support ticket. Order matters: hex-redact, then device-name scrub, then
+    // clamp, so the clamp can never re-expose a partially redacted run.
+    const redacted = raw.replace(/\b[0-9a-fA-F]{16,}\b/g, '<hex>');
+    payload.logTail = scrub(redacted, a.deviceName).slice(-LOG_TAIL_MAX);
   }
   return payload;
 }
 
 /** Shape a payload from the *current* attempt (call after finishAttempt). */
 export function buildConnectEvent(): ConnectEventPayload {
-  return buildConnectEventFrom(lastAttempt ?? attempt);
+  return buildConnectEventFrom(lastAttempt ?? ensureAttempt());
 }
 
 function post(payload: ConnectEventPayload): void {
@@ -337,12 +382,41 @@ function post(payload: ConnectEventPayload): void {
 }
 
 export function finishAttempt(outcome: DiagOutcome, errorCode: string | null, diveCount: number): void {
-  attempt.outcome = outcome;
-  attempt.errorCode = errorCode ?? '';
-  attempt.diveCount = diveCount;
-  attempt.finishedAt = Date.now();
-  lastAttempt = attempt;
-  if (getDiagOptIn() === 'granted') post(buildConnectEventFrom(attempt));
+  const a = ensureAttempt();
+  a.outcome = outcome;
+  a.errorCode = errorCode ?? '';
+  a.diveCount = diveCount;
+  a.finishedAt = Date.now();
+  lastAttempt = a;
+  if (getDiagOptIn() === 'granted') post(buildConnectEventFrom(a));
+}
+
+/** Records a one-off connect-guard rejection that happens before/around an
+ *  attempt, without disturbing any in-flight attempt's ring buffer or timers.
+ *  Posts immediately if opted in. Carries no log tail -- there is nothing to
+ *  say beyond "the guard fired", and the in-flight attempt's ring belongs to
+ *  that attempt, not this rejection. */
+export function recordGuardRejection(errorCode: string): void {
+  if (getDiagOptIn() !== 'granted') return;
+  const ua = currentUA();
+  post({
+    diagnosticCode: makeDiagnosticCode(),
+    outcome: 'error',
+    stage: 'device_select',
+    errorCode,
+    vendor: '',
+    product: '',
+    fallbackMatch: false,
+    diveCount: 0,
+    totalMs: 0,
+    gattMs: 0,
+    openDeviceMs: 0,
+    downloadMs: 0,
+    browserName: ua.browserName,
+    browserVersion: ua.browserVersion,
+    osName: ua.osName,
+    appVersion: APP_VERSION,
+  });
 }
 
 /** Post the most recently finished attempt's event — the opt-in card calls

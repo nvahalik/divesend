@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  __resetDiagOptInCacheForTests,
   RING_MAX_ENTRIES,
   buildConnectEvent,
   buildDiagnosticsText,
@@ -14,6 +15,7 @@ import {
   parseUserAgent,
   pushDiagLog,
   resetDiagLog,
+  recordGuardRejection,
   sendLastConnectEvent,
   setAttemptDevice,
   setAttemptDeviceName,
@@ -115,13 +117,84 @@ describe('buildDiagnosticsText', () => {
 });
 
 describe('opt-in preference', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    __resetDiagOptInCacheForTests();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   it('defaults to unset', () => expect(getDiagOptIn()).toBe('unset'));
   it('round-trips granted / denied', () => {
-    setDiagOptIn('granted');
+    expect(setDiagOptIn('granted')).toBe(true);
     expect(getDiagOptIn()).toBe('granted');
-    setDiagOptIn('denied');
+    expect(setDiagOptIn('denied')).toBe(true);
     expect(getDiagOptIn()).toBe('denied');
+  });
+
+  it('survives a failed localStorage write for this session', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    expect(setDiagOptIn('granted')).toBe(false); // the caller can surface this
+    expect(getDiagOptIn()).toBe('granted'); // ...but consent still holds
+  });
+
+  it('still posts sendLastConnectEvent when the consent write failed', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"ok":true}')));
+    startAttempt();
+    finishAttempt('error', 'x', 0);
+
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    expect(setDiagOptIn('granted')).toBe(false);
+    sendLastConnectEvent();
+    expect(fetch as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('recordGuardRejection', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    __resetDiagOptInCacheForTests();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"ok":true}')));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('posts nothing when opt-in is not granted', () => {
+    recordGuardRejection('already_running');
+    expect(fetch as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it('posts a minimal payload with no logTail when granted', () => {
+    // A ring full of packet noise must NOT ride along on a guard rejection.
+    startAttempt();
+    pushDiagLog('dc', 'in-flight attempt packet noise', '4');
+    setDiagOptIn('granted');
+
+    recordGuardRejection('already_running');
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toMatchObject({
+      outcome: 'error',
+      stage: 'device_select',
+      errorCode: 'already_running',
+      vendor: '',
+      product: '',
+      fallbackMatch: false,
+      diveCount: 0,
+      totalMs: 0,
+      gattMs: 0,
+      openDeviceMs: 0,
+      downloadMs: 0,
+    });
+    expect(body.diagnosticCode).toMatch(CODE_RE);
+    expect(body.appVersion).toBeTruthy();
+    expect('logTail' in body).toBe(false);
+    // The in-flight attempt's ring buffer is untouched.
+    expect(getDiagLog().some((e) => e.line.includes('packet noise'))).toBe(true);
   });
 });
 
@@ -138,6 +211,7 @@ describe('classifyError', () => {
 describe('connect event shaping', () => {
   beforeEach(() => {
     localStorage.clear();
+    __resetDiagOptInCacheForTests();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"ok":true}')));
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -180,6 +254,39 @@ describe('connect event shaping', () => {
     expect(ev.logTail).toContain('<device-name>');
     expect(ev.logTail).not.toContain("Jane's Perdix");
     expect(ev.logTail!.length).toBeLessThanOrEqual(2048);
+  });
+
+  it('redacts long hex runs from the transmitted logTail but not the local export', () => {
+    const hex = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4'; // 40 chars
+    startAttempt();
+    pushDiagLog('dc', `packet in: ${hex} status 0x40 tag 12ab`, '4');
+    finishAttempt('error', 'dom:NetworkError', 0);
+
+    const ev = buildConnectEvent();
+    expect(ev.logTail).toContain('<hex>');
+    expect(ev.logTail).not.toContain(hex);
+    // Short hex-ish tokens are ordinary log content and stay readable.
+    expect(ev.logTail).toContain('0x40');
+    expect(ev.logTail).toContain('12ab');
+    // The user's own export is unaffected -- it's local and explicitly labelled.
+    expect(getDiagLog()[0].line).toContain(hex);
+  });
+
+  it("doesn't let a per-dive persist mark claim the stage of a later failure", () => {
+    startAttempt();
+    markStage('download');
+    markStage('persist'); // fires once per dive, from inside downloadNewDives
+    markStage('persist');
+    finishAttempt('error', 'download:-3', 2);
+    expect(buildConnectEvent().stage).toBe('download');
+  });
+
+  it('still reports persist as the stage for a run that succeeded', () => {
+    startAttempt();
+    markStage('download');
+    markStage('persist');
+    finishAttempt('success', null, 2);
+    expect(buildConnectEvent().stage).toBe('persist');
   });
 
   it('POSTs on finishAttempt only when opt-in is granted', () => {
