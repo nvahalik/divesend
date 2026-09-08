@@ -17,6 +17,7 @@ import { FINGERPRINT_STORAGE_PREFIX } from '../engine/webble';
 import { forgetDeviceSyncHistory } from '../engine/deviceSyncHistory';
 import { AuthForm } from '../components/AuthForm';
 import { LoginForm } from '../components/LoginForm';
+import { DiagnosticsSection } from './DiagnosticsSection';
 
 /**
  * Forgets every per-device "newest dive already downloaded" fingerprint ConnectScreen keeps in
@@ -309,6 +310,7 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
         </div>
 
         <ForgetSyncedDevicesSection />
+        <DiagnosticsSection />
         <ClearAllDivesSection />
       </div>
     );
@@ -324,6 +326,7 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
         </div>
         <LoginForm onLogin={handleLinkSSI} />
         <ForgetSyncedDevicesSection />
+        <DiagnosticsSection />
         <ClearAllDivesSection />
       </div>
     );
