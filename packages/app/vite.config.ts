@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { defineConfig, type Plugin } from 'vitest/config'
+import { execSync } from 'node:child_process'
 
 // Vite's static file server doesn't know .fit/.uddf, so it serves them with no
 // Content-Type -- Safari on iOS then tries to render them inline instead of
@@ -22,7 +23,30 @@ function forceDownloadSampleDives(): Plugin {
   };
 }
 
+// Stamped into the bundle as __APP_VERSION__ so diagnostics reports can name the
+// exact build. Short git sha in CI/local git checkouts; 'dev' when git isn't
+// available (e.g. a tarball build).
+const appVersion = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev'
+  } catch {
+    return 'dev'
+  }
+})()
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
+  build: {
+    // Brand logos (packages/app/src/assets/brand-*) are looked up per dive and
+    // most are <4kB, so Vite's default would base64-inline them into the main
+    // bundle -- shipping every brand to every visitor. Force them to stay
+    // separate files that load only when a dive of that brand is rendered.
+    // Everything else keeps the default inlining behaviour.
+    assetsInlineLimit: (filePath: string) =>
+      /[\\/]assets[\\/]brand-(logos|favicons)[\\/]/.test(filePath) ? false : undefined,
+  },
   // Web Bluetooth requires a secure context: it works on http://localhost but is
   // blocked on any other http origin (e.g. hitting the dev server by LAN IP from a
   // phone). basic-ssl serves the dev server over https with a self-signed cert
