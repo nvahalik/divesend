@@ -4,7 +4,14 @@ import { useDownloadSession, startDownload } from '../engine/downloadSession';
 import { listDeviceSyncHistory, type DeviceSyncRecord } from '../engine/deviceSyncHistory';
 import { isWebBluetoothSupported } from '../lib/webBluetooth';
 import { BluetoothUnsupportedNotice } from '../components/BluetoothUnsupportedNotice';
-import { getDiagOptIn, setDiagOptIn, getLastAttemptOutcome, sendLastConnectEvent } from '../engine/diagnostics';
+import {
+  getDiagOptIn,
+  setDiagOptIn,
+  getLastAttemptOutcome,
+  sendLastConnectEvent,
+  currentAttemptMeta,
+  getDiagLog,
+} from '../engine/diagnostics';
 import { copyDiagnostics, downloadDiagnostics } from './connectDiagnostics';
 
 function DeviceHistoryList({ records }: { records: DeviceSyncRecord[] }) {
@@ -34,12 +41,20 @@ function DeviceHistoryList({ records }: { records: DeviceSyncRecord[] }) {
   );
 }
 
+/** Diagnostic code of the attempt whose opt-in card the user dismissed with
+ *  "Not now". Module-scope so it outlives this Route's unmount -- same reason
+ *  downloadSession's store lives at module scope. */
+let dismissedAttemptCode: string | null = null;
+
 export function ConnectScreen() {
   const session = useDownloadSession();
   const [history, setHistory] = useState<DeviceSyncRecord[]>(() => listDeviceSyncHistory());
   const [optIn, setOptIn] = useState(getDiagOptIn());
   const [lastOutcome, setLastOutcome] = useState(getLastAttemptOutcome());
   const [copied, setCopied] = useState(false);
+  // The diagnostic code the user shared, so the confirmation (which replaces
+  // the card once optIn flips to 'granted') can quote it to support.
+  const [sharedCode, setSharedCode] = useState<string | null>(null);
 
   // The download keeps running (and this store keeps updating) even if this
   // screen isn't mounted -- refresh the history list whenever a run finishes
@@ -108,42 +123,55 @@ export function ConnectScreen() {
           ))}
         </ul>
       )}
-      {!session.connecting && lastOutcome === 'error' && optIn === 'unset' && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
-          <p className="font-medium text-amber-900">Something went wrong connecting.</p>
-          <p className="text-amber-800">
-            Share an anonymous diagnostic report to help us fix it? It includes your browser, the
-            dive-computer model, and the connection log — <span className="font-medium">no dive data</span>.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                setDiagOptIn('granted');
-                sendLastConnectEvent();
-                setOptIn('granted');
-              }}
-              className="rounded-lg bg-amber-900 px-4 py-2 font-semibold text-white hover:bg-amber-800"
-            >
-              Share report
-            </button>
-            <button
-              onClick={() => setLastOutcome(null)}
-              className="rounded-lg border border-amber-300 px-4 py-2 font-medium text-amber-900 hover:bg-amber-100"
-            >
-              Not now
-            </button>
-            <button
-              onClick={() => {
-                setDiagOptIn('denied');
-                setOptIn('denied');
-              }}
-              className="rounded-lg px-4 py-2 font-medium text-amber-800 underline"
-            >
-              Don't ask again
-            </button>
-          </div>
+      {!session.connecting && sharedCode && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          Diagnostic report sent. Quote this code to support:{' '}
+          <span className="font-mono font-semibold">{sharedCode}</span>
         </div>
       )}
+      {!session.connecting &&
+        lastOutcome === 'error' &&
+        optIn === 'unset' &&
+        dismissedAttemptCode !== currentAttemptMeta().code && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+            <p className="font-medium text-amber-900">Something went wrong connecting.</p>
+            <p className="text-amber-800">
+              Share an anonymous diagnostic report to help us fix it? It includes your browser, the
+              dive-computer model, and the connection log — <span className="font-medium">no dive data</span>.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setDiagOptIn('granted');
+                  sendLastConnectEvent();
+                  setOptIn('granted');
+                  setSharedCode(currentAttemptMeta().code);
+                }}
+                className="rounded-lg bg-amber-900 px-4 py-2 font-semibold text-white hover:bg-amber-800"
+              >
+                Share report
+              </button>
+              <button
+                onClick={() => {
+                  dismissedAttemptCode = currentAttemptMeta().code;
+                  setLastOutcome(null);
+                }}
+                className="rounded-lg border border-amber-300 px-4 py-2 font-medium text-amber-900 hover:bg-amber-100"
+              >
+                Not now
+              </button>
+              <button
+                onClick={() => {
+                  setDiagOptIn('denied');
+                  setOptIn('denied');
+                }}
+                className="rounded-lg px-4 py-2 font-medium text-amber-800 underline"
+              >
+                Don't ask again
+              </button>
+            </div>
+          </div>
+        )}
       <details className="rounded-2xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500">Log</summary>
         <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs">{session.log.join('\n')}</pre>
@@ -160,6 +188,11 @@ export function ConnectScreen() {
           >
             Download diagnostics
           </button>
+          {getDiagLog().length > 0 && (
+            <p className="self-center text-xs text-slate-500">
+              Diagnostic code: <span className="font-mono">{currentAttemptMeta().code}</span>
+            </p>
+          )}
         </div>
       </details>
       <DeviceHistoryList records={history} />

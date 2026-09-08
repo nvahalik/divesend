@@ -11,10 +11,14 @@ import { getDiagOptIn, setDiagOptIn } from '../engine/diagnostics';
  */
 export function DiagnosticsSection() {
   const [on, setOn] = useState(getDiagOptIn() === 'granted');
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const toggle = () => {
     const next = !on;
-    setDiagOptIn(next ? 'granted' : 'denied');
+    // The preference still applies for this session even if it can't be
+    // persisted (diagnostics.ts keeps an in-memory copy) -- say so rather than
+    // pretending the write succeeded.
+    setSaveFailed(!setDiagOptIn(next ? 'granted' : 'denied'));
     setOn(next);
   };
 
@@ -35,6 +39,9 @@ export function DiagnosticsSection() {
           connection problems can be diagnosed. <span className="font-medium">No dive data is ever included.</span>
         </span>
       </label>
+      {saveFailed && (
+        <p className="mt-2 text-xs text-slate-500">Couldn't save this preference — it will reset when you reload.</p>
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { getDiagOptIn } from '../engine/diagnostics';
+import { __resetDiagOptInCacheForTests, getDiagOptIn, setDiagOptIn } from '../engine/diagnostics';
 import { DiagnosticsSection } from './DiagnosticsSection';
 
 describe('DiagnosticsSection', () => {
@@ -11,6 +11,7 @@ describe('DiagnosticsSection', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    __resetDiagOptInCacheForTests();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -18,6 +19,7 @@ describe('DiagnosticsSection', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.restoreAllMocks();
   });
 
   const checkbox = () => container.querySelector('input[type="checkbox"]') as HTMLInputElement;
@@ -37,5 +39,26 @@ describe('DiagnosticsSection', () => {
     act(() => checkbox().click());
     act(() => checkbox().click());
     expect(getDiagOptIn()).toBe('denied');
+  });
+
+  it('reflects a pre-existing granted preference on mount', () => {
+    setDiagOptIn('granted');
+    act(() => root.render(<DiagnosticsSection />));
+    expect(checkbox().checked).toBe(true);
+  });
+
+  it('warns when the preference could not be persisted', () => {
+    act(() => root.render(<DiagnosticsSection />));
+    expect(container.textContent).not.toContain("Couldn't save this preference");
+
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    act(() => checkbox().click());
+
+    expect(container.textContent).toContain("Couldn't save this preference");
+    // ...and it still applies for this session.
+    expect(checkbox().checked).toBe(true);
+    expect(getDiagOptIn()).toBe('granted');
   });
 });
