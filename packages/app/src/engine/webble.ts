@@ -8,6 +8,7 @@ interface WebbleModuleWebble {
   onDive(json: string): void;
   onDiveError(index: number, message: string): void;
   onProgress(current: number, maximum: number): void;
+  onLog(level: number, line: string): void;
 }
 
 interface WebbleModule {
@@ -106,7 +107,7 @@ export function waitForEngineReady(): Promise<void> {
  * notification queue/listener from a prior session first.
  *
  * Call this before setDiveCallbacks()/setProgressCallback() every session --
- * it resets Module.webble.onDive/onDiveError/onProgress to no-ops, so
+ * it resets Module.webble.onDive/onDiveError/onProgress/onLog to no-ops, so
  * calling those first would have their registrations silently overwritten,
  * and dives (or progress updates) would be dropped with no visible error.
  */
@@ -157,6 +158,7 @@ export async function installTransport(
     onDive: () => {},
     onDiveError: () => {},
     onProgress: () => {},
+    onLog: () => {},
   };
 }
 
@@ -238,4 +240,19 @@ export type ProgressCallback = (current: number, maximum: number) => void;
  */
 export function setProgressCallback(onProgress: ProgressCallback): void {
   window.Module.webble.onProgress = onProgress;
+}
+
+export type LogCallback = (level: number, line: string) => void;
+
+/**
+ * Registers a callback for libdivecomputer's log output (wired to
+ * dc_context_set_logfunc in ble_web.c). `level` is the raw dc_loglevel_t int
+ * (1=ERROR … 5=ALL); `line` is the pre-formatted "[LEVEL] function: message"
+ * string. Fires from a synchronous, non-BLE-I/O context, potentially many
+ * times per second during a download. Call after installTransport() (which
+ * resets it to a no-op) and before openTransport() (which opens the context
+ * that starts producing lines).
+ */
+export function setLogCallback(onLog: LogCallback): void {
+  window.Module.webble.onLog = onLog;
 }
