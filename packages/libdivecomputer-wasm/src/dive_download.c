@@ -76,17 +76,15 @@ hex_encode (const unsigned char *bytes, unsigned int size)
 	return hex;
 }
 
+// Progress hook handed to device_session.c for the duration of a download.
+// Deliberately NOT wired up with dc_device_set_events -- the device has exactly
+// one event callback slot and device_session.c owns it, so re-subscribing here
+// would drop the DC_EVENT_DEVINFO subscription that captures the serial number.
 static void
-event_callback (dc_device_t *device, dc_event_type_t event, const void *data, void *userdata)
+on_progress (unsigned int current, unsigned int maximum, void *userdata)
 {
-	(void) device;
 	(void) userdata;
-
-	if (event != DC_EVENT_PROGRESS) {
-		return;
-	}
-	const dc_event_progress_t *progress = (const dc_event_progress_t *) data;
-	webble_js_on_progress (progress->current, progress->maximum);
+	webble_js_on_progress (current, maximum);
 }
 
 // dc_dive_callback_t: returning 0 stops dc_device_foreach's walk, non-zero
@@ -149,12 +147,15 @@ webble_download_new_dives (const char *fingerprint_hex)
 	free (g_latest_fingerprint_hex);
 	g_latest_fingerprint_hex = NULL;
 
-	// Best-effort: not every backend implements DC_EVENT_PROGRESS, so a
-	// failure here just means no progress events arrive -- not fatal to the
-	// download itself.
-	dc_device_set_events (device, DC_EVENT_PROGRESS, event_callback, NULL);
+	// Route progress events through device_session.c's permanent event callback
+	// for the duration of this walk. Best-effort: not every backend implements
+	// DC_EVENT_PROGRESS, in which case the hook simply never fires.
+	webble_set_progress_hook (on_progress, NULL);
 
 	dc_status_t status = dc_device_foreach (device, dive_callback, NULL);
+
+	webble_set_progress_hook (NULL, NULL);
+
 	if (status != DC_STATUS_SUCCESS) {
 		return -3;
 	}

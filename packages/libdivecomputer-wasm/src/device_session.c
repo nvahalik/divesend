@@ -16,20 +16,48 @@ static unsigned int g_serial = 0;
 static int g_have_devinfo = 0;
 static int g_match_is_fallback = 0;
 static char g_serial_hex[16];
+static webble_progress_fn g_progress_fn = NULL;
+static void *g_progress_userdata = NULL;
 
+// The ONE event callback registered on the device for the whole session (see
+// webble_open_device). It multiplexes every event libdivecomputer raises during
+// dc_device_foreach: DC_EVENT_DEVINFO is captured here for the serial number,
+// DC_EVENT_PROGRESS is forwarded to whatever hook the current caller installed
+// via webble_set_progress_hook. Nothing else may call dc_device_set_events --
+// doing so would silently drop the DEVINFO subscription and, with it, the
+// serial (regression fixed 2026-09: a progress-only re-subscription in
+// dive_download.c did exactly that, so synced Shearwater dives lost their
+// manufacturer on the SSI side).
 static void
-devinfo_callback (dc_device_t *device, dc_event_type_t event, const void *data, void *userdata)
+session_event_callback (dc_device_t *device, dc_event_type_t event, const void *data, void *userdata)
 {
 	(void) device;
 	(void) userdata;
 
-	if (event != DC_EVENT_DEVINFO) {
+	if (event == DC_EVENT_DEVINFO) {
+		const dc_event_devinfo_t *devinfo = (const dc_event_devinfo_t *) data;
+		g_serial = devinfo->serial;
+		g_have_devinfo = 1;
 		return;
 	}
 
-	const dc_event_devinfo_t *devinfo = (const dc_event_devinfo_t *) data;
-	g_serial = devinfo->serial;
-	g_have_devinfo = 1;
+	if (event == DC_EVENT_PROGRESS && g_progress_fn) {
+		const dc_event_progress_t *progress = (const dc_event_progress_t *) data;
+		g_progress_fn (progress->current, progress->maximum, g_progress_userdata);
+	}
+}
+
+void
+webble_set_progress_hook (webble_progress_fn fn, void *userdata)
+{
+	g_progress_fn = fn;
+	g_progress_userdata = userdata;
+}
+
+void
+webble_session_dispatch_event (dc_device_t *device, dc_event_type_t event, const void *data, void *userdata)
+{
+	session_event_callback (device, event, data, userdata);
 }
 
 // Resolves this BLE device's advertised name to a dc_descriptor_t (see
@@ -63,7 +91,10 @@ webble_open_device (const char *device_name)
 	g_descriptor = match;
 	g_match_is_fallback = is_fallback;
 
-	dc_device_set_events (g_device, DC_EVENT_DEVINFO, devinfo_callback, NULL);
+	// Register the session's single, permanent event callback. It stays put for
+	// the life of the open device -- callers that want progress events install a
+	// hook via webble_set_progress_hook instead of re-registering here.
+	dc_device_set_events (g_device, DC_EVENT_DEVINFO | DC_EVENT_PROGRESS, session_event_callback, NULL);
 
 	return 0;
 }
@@ -136,6 +167,8 @@ webble_close_device (void)
 	g_have_devinfo = 0;
 	g_serial = 0;
 	g_match_is_fallback = 0;
+	g_progress_fn = NULL;
+	g_progress_userdata = NULL;
 }
 
 dc_device_t *
