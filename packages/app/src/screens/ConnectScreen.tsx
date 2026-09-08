@@ -4,6 +4,8 @@ import { useDownloadSession, startDownload } from '../engine/downloadSession';
 import { listDeviceSyncHistory, type DeviceSyncRecord } from '../engine/deviceSyncHistory';
 import { isWebBluetoothSupported } from '../lib/webBluetooth';
 import { BluetoothUnsupportedNotice } from '../components/BluetoothUnsupportedNotice';
+import { getDiagOptIn, setDiagOptIn, getLastAttemptOutcome, sendLastConnectEvent } from '../engine/diagnostics';
+import { copyDiagnostics, downloadDiagnostics } from './connectDiagnostics';
 
 function DeviceHistoryList({ records }: { records: DeviceSyncRecord[] }) {
   if (records.length === 0) return null;
@@ -35,6 +37,9 @@ function DeviceHistoryList({ records }: { records: DeviceSyncRecord[] }) {
 export function ConnectScreen() {
   const session = useDownloadSession();
   const [history, setHistory] = useState<DeviceSyncRecord[]>(() => listDeviceSyncHistory());
+  const [optIn, setOptIn] = useState(getDiagOptIn());
+  const [lastOutcome, setLastOutcome] = useState(getLastAttemptOutcome());
+  const [copied, setCopied] = useState(false);
 
   // The download keeps running (and this store keeps updating) even if this
   // screen isn't mounted -- refresh the history list whenever a run finishes
@@ -42,6 +47,13 @@ export function ConnectScreen() {
   // needing a manual reload.
   useEffect(() => {
     if (!session.connecting) setHistory(listDeviceSyncHistory());
+  }, [session.connecting]);
+
+  useEffect(() => {
+    if (!session.connecting) {
+      setOptIn(getDiagOptIn());
+      setLastOutcome(getLastAttemptOutcome());
+    }
   }, [session.connecting]);
 
   const bluetoothSupported = isWebBluetoothSupported();
@@ -96,9 +108,59 @@ export function ConnectScreen() {
           ))}
         </ul>
       )}
+      {!session.connecting && lastOutcome === 'error' && optIn === 'unset' && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+          <p className="font-medium text-amber-900">Something went wrong connecting.</p>
+          <p className="text-amber-800">
+            Share an anonymous diagnostic report to help us fix it? It includes your browser, the
+            dive-computer model, and the connection log — <span className="font-medium">no dive data</span>.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                setDiagOptIn('granted');
+                sendLastConnectEvent();
+                setOptIn('granted');
+              }}
+              className="rounded-lg bg-amber-900 px-4 py-2 font-semibold text-white hover:bg-amber-800"
+            >
+              Share report
+            </button>
+            <button
+              onClick={() => setLastOutcome(null)}
+              className="rounded-lg border border-amber-300 px-4 py-2 font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Not now
+            </button>
+            <button
+              onClick={() => {
+                setDiagOptIn('denied');
+                setOptIn('denied');
+              }}
+              className="rounded-lg px-4 py-2 font-medium text-amber-800 underline"
+            >
+              Don't ask again
+            </button>
+          </div>
+        </div>
+      )}
       <details className="rounded-2xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500">Log</summary>
         <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs">{session.log.join('\n')}</pre>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => void copyDiagnostics().then(setCopied)}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+          >
+            {copied ? 'Copied' : 'Copy diagnostics'}
+          </button>
+          <button
+            onClick={downloadDiagnostics}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+          >
+            Download diagnostics
+          </button>
+        </div>
       </details>
       <DeviceHistoryList records={history} />
     </div>
