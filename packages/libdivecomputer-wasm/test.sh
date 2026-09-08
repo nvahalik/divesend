@@ -27,3 +27,23 @@ emcc -I "$BUILD/gen" -I "$LIBDC/include" -I "$LIBDC/src" \
 
 echo "== Running resolve_descriptor_test =="
 node "$BUILD/resolve_descriptor_test.js"
+
+echo "== Building event_multiplex_test =="
+emcc -I "$BUILD/gen" -I "$LIBDC/include" -I "$LIBDC/src" \
+  "$ROOT/test/event_multiplex_test.c" "$ROOT/src/device_session.c" "$BUILD/libdivecomputer-core.a" \
+  -sEXIT_RUNTIME=1 \
+  -o "$BUILD/event_multiplex_test.js"
+
+echo "== Running event_multiplex_test =="
+node "$BUILD/event_multiplex_test.js"
+
+echo "== Building log_bridge_test =="
+# ble_web.c's webble_close() cascades into device_session.c (webble_close_device),
+# which in turn references descriptor_match.c -- link both so the TU resolves.
+emcc -I "$BUILD/gen" -I "$LIBDC/include" -I "$LIBDC/src" \
+  "$ROOT/test/log_bridge_test.c" "$ROOT/src/ble_web.c" "$ROOT/src/device_session.c" "$ROOT/src/descriptor_match.c" "$BUILD/libdivecomputer-core.a" \
+  -sEXIT_RUNTIME=1 \
+  -o "$BUILD/log_bridge_test.js"
+
+echo "== Running log_bridge_test =="
+node "$BUILD/log_bridge_test.js"

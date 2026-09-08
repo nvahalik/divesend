@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <emscripten.h>
 
@@ -90,6 +91,54 @@ static const dc_custom_cbs_t callbacks = {
 	.close = custom_close,
 };
 
+static const char *
+loglevel_label (dc_loglevel_t level)
+{
+	switch (level) {
+	case DC_LOGLEVEL_ERROR:   return "ERROR";
+	case DC_LOGLEVEL_WARNING: return "WARN";
+	case DC_LOGLEVEL_INFO:    return "INFO";
+	case DC_LOGLEVEL_DEBUG:   return "DEBUG";
+	case DC_LOGLEVEL_ALL:     return "ALL";
+	case DC_LOGLEVEL_NONE:    return "NONE";
+	default:                  return "?";
+	}
+}
+
+void
+webble_format_log_line (dc_loglevel_t level, const char *function, const char *message, char *out, size_t outsize)
+{
+	if (outsize == 0) {
+		return;
+	}
+	snprintf (out, outsize, "[%s] %s: %s",
+	          loglevel_label (level),
+	          function ? function : "(nofn)",
+	          message ? message : "");
+	out[outsize - 1] = '\0';
+}
+
+// Bridges every libdivecomputer log line to JS. Runs inside libdivecomputer
+// (often mid-dc_device_foreach), so it must not allocate, must not call back
+// into libdivecomputer, and must only format into a stack buffer + hand the
+// string to JS. file/line are dropped deliberately -- function + message is
+// enough to follow a handshake and keeps each line short.
+EM_JS(void, webble_js_on_log, (int level, const char *line), {
+	if (Module.webble && Module.webble.onLog) {
+		Module.webble.onLog(level, UTF8ToString(line));
+	}
+});
+
+static void
+webble_log_cb (dc_context_t *context, dc_loglevel_t loglevel, const char *file, unsigned int line,
+               const char *function, const char *message, void *userdata)
+{
+	(void) context; (void) file; (void) line; (void) userdata;
+	char buf[1024];
+	webble_format_log_line (loglevel, function, message, buf, sizeof (buf));
+	webble_js_on_log ((int) loglevel, buf);
+}
+
 static dc_context_t *g_context = NULL;
 static dc_iostream_t *g_iostream = NULL;
 
@@ -113,6 +162,8 @@ webble_open (void)
 	if (dc_context_new (&g_context) != DC_STATUS_SUCCESS) {
 		return -1;
 	}
+	dc_context_set_loglevel (g_context, DC_LOGLEVEL_ALL);
+	dc_context_set_logfunc (g_context, webble_log_cb, NULL);
 	if (dc_custom_open (&g_iostream, g_context, DC_TRANSPORT_BLE, &callbacks, NULL) != DC_STATUS_SUCCESS) {
 		return -2;
 	}
