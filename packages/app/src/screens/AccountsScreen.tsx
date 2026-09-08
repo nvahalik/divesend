@@ -362,6 +362,7 @@ export function AccountsScreen({ user, onSessionChange }: Props) {
         </button>
       </div>
       <ForgetSyncedDevicesSection />
+      <DiagnosticsSection />
       <ClearAllDivesSection />
     </div>
   );
