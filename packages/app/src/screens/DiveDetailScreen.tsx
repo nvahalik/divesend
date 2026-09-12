@@ -7,6 +7,7 @@ import { METERS_TO_FEET, BAR_TO_PSI, celsiusToFahrenheit, formatDuration, comput
 import { toUddf } from '@divesend/core/parsers';
 import { diveExportFileName } from '../export/diveExportFilename';
 import { SsiSyncedBadge } from '../components/SsiSyncedBadge';
+import { BrandLogo } from '../components/BrandLogo';
 
 function downloadBlob(data: Uint8Array | string, fileName: string, mimeType: string) {
   const blob = new Blob([data as BlobPart], { type: mimeType });
@@ -83,6 +84,7 @@ export function DiveDetailScreen({ id, onBack }: Props) {
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold">{new Date(dive.date).toLocaleString()}</h1>
+            <BrandLogo computerModel={dive.computerModel} variant="wordmark" className="h-5 w-auto text-slate-300" />
             {dive.syncState === 'synced' && dive.ssiDiveNumber != null && (
               <SsiSyncedBadge diveNumber={dive.ssiDiveNumber} />
             )}
@@ -110,7 +112,17 @@ export function DiveDetailScreen({ id, onBack }: Props) {
       <section className="grid grid-cols-3 gap-4 rounded-2xl border border-slate-200 bg-white p-4">
         <Stat label="Max depth" value={`${Math.round(dive.maxDepthM * METERS_TO_FEET)} ft`} />
         <Stat label="Duration" value={formatDuration(header.divetimeS)} />
-        <Stat label="Computer" value={dive.computerModel} />
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Computer</div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <BrandLogo
+              computerModel={dive.computerModel}
+              variant="favicon"
+              className="h-5 w-5 shrink-0 object-contain text-slate-400"
+            />
+            <span className="text-lg font-bold">{dive.computerModel}</span>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4">

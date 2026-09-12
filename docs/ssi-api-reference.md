@@ -953,6 +953,19 @@ external source. See [Known gotchas](#known-gotchas--caveats).
 > shows as a "redundant dive number" warning in the app, no data loss). Set
 > this correctly the first time rather than editing it later.
 
+> **`odin_user_log_divecomputer_serial_nr` is what actually binds the dive
+> to a device.** On create, if the serial is empty the server ignores the
+> `_manufacturer` and `_name` you send (stores them blank, leaves
+> `_divecomputer_id` null) and only keeps `_ref` verbatim — the app then
+> shows the dive under its default brand ("Mares"). Send a non-empty serial
+> and the server resolves/creates the `log_divecomputer_archive` row and
+> echoes `_manufacturer`/`_name`/`_divecomputer_id` back populated.
+> Confirmed on 2026-09: a Shearwater dive synced with no serial showed as
+> "Mares"; re-sending the same dive via `update` with
+> `serial_nr="4C579D0F"` bound it to the existing device row
+> (`_divecomputer_id 64854`) and fixed the brand, with no duplicate archive
+> row.
+
 #### Profile datasets (per-sample time series)
 
 All are JSON-encoded **strings** (not native JSON arrays) inside the outer

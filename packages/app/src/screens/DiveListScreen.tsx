@@ -7,6 +7,7 @@ import { filterDives, DEFAULT_DIVE_LIST_FILTERS } from './diveListFilters';
 import type { DiveListFilters, DiveTypeFilter, WaterTypeFilter, SyncStatusFilter } from './diveListFilters';
 import { DiveProfileSparkline } from '../components/DiveProfileSparkline';
 import { SsiSyncedBadge } from '../components/SsiSyncedBadge';
+import { BrandLogo } from '../components/BrandLogo';
 import { METERS_TO_FEET, formatDuration } from '@divesend/core';
 import { syncDive, syncAllDives, reconcileWithSSI } from '../ssi/diveSyncEngine';
 import type { ExtraDiveDetails } from '../ssi/extraDiveDetails';
@@ -327,6 +328,11 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
                   className="h-5 w-5 shrink-0"
                 />
               )}
+              <BrandLogo
+                computerModel={dive.computerModel}
+                variant="favicon"
+                className="h-8 w-8 shrink-0 object-contain text-slate-300"
+              />
               <div className="flex-1">
                 <div className="font-semibold">{new Date(dive.date).toLocaleString()}</div>
                 <div className="text-sm text-slate-500">
