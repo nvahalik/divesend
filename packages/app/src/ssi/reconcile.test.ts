@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ssiDiveDateTimeKey, type CanonicalDive } from '@divesend/core';
-import { indexDivelogByDateTime, reconcileDives } from './reconcile';
+import { indexDivelogByDateTime, reconcileDives, unlinkDeletedDives } from './reconcile';
 import type { StoredDive, SyncState } from '../db/Dive';
 
 function makeCanonicalDive(startTime: string, utcOffsetMinutes?: number | null): CanonicalDive {
@@ -140,5 +140,45 @@ describe('reconcileDives', () => {
     ]);
     expect(linked.map((d) => d.id).sort()).toEqual(['a', 'c']);
     expect(linked.find((d) => d.id === 'c')).toMatchObject({ ssiDiveID: 300, ssiDiveNumber: 12 });
+  });
+});
+
+function makeSyncedDive(id: string, startTime: string, ssiDiveID: number, ssiDiveNumber: number): StoredDive {
+  return { ...makeDive(id, startTime, 'synced'), ssiDiveID, ssiDiveNumber };
+}
+
+describe('unlinkDeletedDives', () => {
+  it('unlinks a synced dive whose ssiDiveID is no longer in the divelog', () => {
+    const dive = makeSyncedDive('a', '2026-08-01T10:00:00Z', 42, 7);
+    const unlinked = unlinkDeletedDives([dive], []);
+    // Empty divelog is treated as a fetch glitch, not "everything was deleted".
+    expect(unlinked).toEqual([]);
+
+    const stillEmpty = unlinkDeletedDives([dive], [ssiRecord('2026-09-01T10:00:00Z', 99, 1)]);
+    expect(stillEmpty).toHaveLength(1);
+    expect(stillEmpty[0]).toMatchObject({ id: 'a', syncState: 'notSynced', ssiDiveID: null, ssiDiveNumber: null });
+    // Returns a new object; the input is untouched.
+    expect(dive.syncState).toBe('synced');
+    expect(stillEmpty[0]).not.toBe(dive);
+  });
+
+  it('leaves a synced dive alone when its ssiDiveID is still present', () => {
+    const dive = makeSyncedDive('a', '2026-08-01T10:00:00Z', 42, 7);
+    expect(unlinkDeletedDives([dive], [ssiRecord('2026-08-01T10:00:00Z', 42, 7)])).toEqual([]);
+  });
+
+  it('ignores notSynced and doNotSync dives', () => {
+    const dives = [
+      makeDive('a', '2026-08-01T10:00:00Z', 'notSynced'),
+      makeDive('b', '2026-08-01T10:00:00Z', 'doNotSync'),
+    ];
+    expect(unlinkDeletedDives(dives, [ssiRecord('2026-09-01T10:00:00Z', 99, 1)])).toEqual([]);
+  });
+
+  it('unlinks only the dives whose ssiDiveID is missing, out of a mixed set', () => {
+    const stale = makeSyncedDive('a', '2026-08-01T10:00:00Z', 1, 1);
+    const current = makeSyncedDive('b', '2026-08-02T10:00:00Z', 2, 2);
+    const unlinked = unlinkDeletedDives([stale, current], [ssiRecord('2026-08-02T10:00:00Z', 2, 2)]);
+    expect(unlinked.map((d) => d.id)).toEqual(['a']);
   });
 });

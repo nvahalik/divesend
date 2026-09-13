@@ -7,7 +7,7 @@ import type { StoredDive } from '../db/Dive';
 import type { ExtraDiveDetails } from './extraDiveDetails';
 import { toOverrides } from './extraDiveDetails';
 import { buildCreatePayload, computeSacPsiPerMin, transformDive } from '@divesend/core';
-import { reconcileDives } from './reconcile';
+import { reconcileDives, unlinkDeletedDives } from './reconcile';
 import { getDivelog, saveDivelog } from './ssiClient';
 
 export class DiveSyncError extends Error {}
@@ -26,9 +26,22 @@ export async function reconcileDivesWithDivelog(divelog: Record<string, unknown>
   return linked;
 }
 
-/** Fetches the divelog and reconciles every local dive against it. */
+/**
+ * Fetches the divelog and reconciles every local dive against it in both
+ * directions: links a `notSynced` dive SSI already has (see `reconcileDives`),
+ * and unlinks a `synced` dive whose SSI record is gone -- deleted directly on
+ * SSI -- back to `notSynced` so it becomes eligible to sync again (see
+ * `unlinkDeletedDives`). Returns every dive touched either way.
+ */
 export async function reconcileWithSSI(): Promise<StoredDive[]> {
-  return reconcileDivesWithDivelog(await getDivelog());
+  const divelog = await getDivelog();
+  const dives = await getAllDives();
+  const linked = reconcileDives(dives, divelog);
+  const unlinked = unlinkDeletedDives(dives, divelog);
+  for (const dive of [...linked, ...unlinked]) {
+    await putDive(dive);
+  }
+  return [...linked, ...unlinked];
 }
 
 function mostRecentDive(divelog: Record<string, unknown>[]): Record<string, unknown> {

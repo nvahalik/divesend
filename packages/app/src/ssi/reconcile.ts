@@ -66,3 +66,33 @@ export function reconcileDives(
   }
   return linked;
 }
+
+/**
+ * Returns the subset of `dives` that are `synced` locally but whose `ssiDiveID`
+ * no longer appears anywhere in `divelog` -- each as a NEW object reset to
+ * `notSynced` with its SSI ids cleared, so it becomes eligible for `syncDive`/
+ * `syncAllDives` again. Covers a dive deleted directly on SSI: DiveSend has no
+ * other way to notice, since a `synced` dive is otherwise never re-checked.
+ *
+ * Skipped entirely when `divelog` is empty -- SSI returning nothing is far more
+ * likely a transient fetch/auth glitch than every synced dive having been
+ * deleted, and treating the former as the latter would unlink everything.
+ */
+export function unlinkDeletedDives(dives: StoredDive[], divelog: Record<string, unknown>[]): StoredDive[] {
+  if (divelog.length === 0) return [];
+  const stillPresent = new Set(
+    divelog.map((record) => record.odin_user_log_id).filter((id): id is number => typeof id === 'number')
+  );
+  const unlinked: StoredDive[] = [];
+  for (const dive of dives) {
+    if (dive.syncState !== 'synced' || dive.ssiDiveID == null) continue;
+    if (stillPresent.has(dive.ssiDiveID)) continue;
+    unlinked.push({
+      ...dive,
+      syncState: 'notSynced',
+      ssiDiveID: null,
+      ssiDiveNumber: null,
+    });
+  }
+  return unlinked;
+}

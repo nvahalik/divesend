@@ -73,10 +73,12 @@ export function DiveListScreen({ refreshKey, onSelectDive, ssiReady }: Props) {
 
   const refresh = () => setLocalRefreshKey((k) => k + 1);
 
-  // Whenever SSI is connected, quietly link any local dives that already exist
-  // in the user's SSI divelog (matched by timestamp) so they show as synced
-  // and don't get re-uploaded. Fire-and-forget: a divelog fetch failure here
-  // must never block the dive list from rendering.
+  // Whenever SSI is connected, quietly reconcile local dives against the SSI
+  // divelog both ways: link any that already exist there (matched by
+  // timestamp) so they show as synced and don't get re-uploaded, and unlink
+  // any synced dive whose SSI record is gone (deleted directly on SSI) so it
+  // becomes eligible to sync again. Fire-and-forget: a divelog fetch failure
+  // here must never block the dive list from rendering.
   useEffect(() => {
     if (!ssiReady) return;
     let cancelled = false;

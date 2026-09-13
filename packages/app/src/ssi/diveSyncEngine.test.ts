@@ -214,4 +214,27 @@ describe('reconcileWithSSI', () => {
     expect(await reconcileWithSSI()).toEqual([]);
     expect(putDive).not.toHaveBeenCalled();
   });
+
+  it('unlinks a synced dive whose SSI record was deleted', async () => {
+    const deleted = { ...makeDive('a'), syncState: 'synced' as const, ssiDiveID: 42, ssiDiveNumber: 7 };
+    vi.mocked(getAllDives).mockResolvedValue([deleted]);
+    vi.mocked(getDivelog).mockResolvedValue([
+      { odin_user_log_datetime: '2026-09-01 00:00', odin_user_log_id: 99, odin_user_log_nr: 1 },
+    ]);
+
+    const result = await reconcileWithSSI();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ id: 'a', syncState: 'notSynced', ssiDiveID: null, ssiDiveNumber: null });
+    expect(putDive).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not unlink a synced dive still present in an empty-looking divelog fetch', async () => {
+    const synced = { ...makeDive('a'), syncState: 'synced' as const, ssiDiveID: 42, ssiDiveNumber: 7 };
+    vi.mocked(getAllDives).mockResolvedValue([synced]);
+    vi.mocked(getDivelog).mockResolvedValue([]);
+
+    expect(await reconcileWithSSI()).toEqual([]);
+    expect(putDive).not.toHaveBeenCalled();
+  });
 });
